@@ -1,0 +1,10 @@
+name = "Windows Terminal"
+app = "windowsterminal.exe"
+
+[chords]
+nt = { name = "New tab", shortcut = "ctrl+shift+t" }
+ct = { name = "Close tab", shortcut = "ctrl+shift+w" }
+tn = { name = "Next tab", shortcut = "ctrl+tab" }
+tp = { name = "Previous tab", shortcut = "ctrl+shift+tab" }
+sv = { name = "Split pane right", shortcut = "alt+shift+plus" }
+sh = { name = "Split pane down", shortcut = "alt+shift+-" }

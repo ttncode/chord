@@ -1,0 +1,27 @@
+# VS Code default shortcuts; Antigravity is built on VS Code.
+name = "Antigravity"
+app = "antigravity ide.exe"
+
+[chords]
+# Menu bar: m + the menu's first letter. Then arrows + Enter pick an item.
+mf = { name = "Menu: File", shortcut = "alt+f" }
+me = { name = "Menu: Edit", shortcut = "alt+e" }
+ms = { name = "Menu: Selection", shortcut = "alt+s" }
+mv = { name = "Menu: View", shortcut = "alt+v" }
+mg = { name = "Menu: Go", shortcut = "alt+g" }
+mr = { name = "Menu: Run", shortcut = "alt+r" }
+mt = { name = "Menu: Terminal", shortcut = "alt+t" }
+mh = { name = "Menu: Help", shortcut = "alt+h" }
+
+gd = { name = "Go to definition", shortcut = "f12" }
+gf = { name = "Go to file", shortcut = "ctrl+p" }
+cp = { name = "Command palette", shortcut = "ctrl+shift+p" }
+
+fe = { name = "Focus Explorer", shortcut = "ctrl+shift+e" }
+ts = { name = "Toggle sidebar", shortcut = "ctrl+b" }
+ca = { name = "Collapse folders in Explorer", palette = "Collapse Folders in Explorer" }
+
+tt = { name = "Toggle terminal", shortcut = "ctrl+`" }
+fs = { name = "Search in files", shortcut = "ctrl+shift+f" }
+fg = { name = "Focus Source Control", shortcut = "ctrl+shift+g" }
+fd = { name = "Focus editor", shortcut = "ctrl+1" }

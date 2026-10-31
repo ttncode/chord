@@ -201,6 +201,9 @@ fn is_modifier(vk: u16) -> bool {
     matches!(vk, 0xA0..=0xA5 | VK_LWIN | VK_RWIN)
 }
 
+/// Every character `char_of` can produce; chord names in files must use only these.
+pub const CHORD_CHARS: &str = "abcdefghijklmnopqrstuvwxyz0123456789;=,-./[]'";
+
 /// Chord letters are matched by virtual key (US layout), never translated, so IMEs and dead keys can't interfere.
 fn char_of(vk: u16) -> Option<u8> {
     match vk {

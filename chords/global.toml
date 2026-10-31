@@ -1,0 +1,21 @@
+# Global chords work in every app. Start them with a symbol so they never clash with app chords.
+name = "Global"
+
+[chords]
+"/e" = { name = "File Explorer", shortcut = "win+e" }
+
+# Snap the window, Vim directions
+"/wh" = { name = "Window: left half", shortcut = "win+left" }
+"/wl" = { name = "Window: right half", shortcut = "win+right" }
+"/wk" = { name = "Window: maximize", shortcut = "win+up" }
+"/wj" = { name = "Window: restore / minimize", shortcut = "win+down" }
+
+# Virtual desktops
+"/dh" = { name = "Desktop: previous", shortcut = "win+ctrl+left" }
+"/dl" = { name = "Desktop: next", shortcut = "win+ctrl+right" }
+"/dn" = { name = "Desktop: new", shortcut = "win+ctrl+d" }
+"/dx" = { name = "Desktop: close", shortcut = "win+ctrl+f4" }
+
+# Apps
+"/a" = { name = "Open Antigravity", shell = 'start "" "%LOCALAPPDATA%\Programs\Antigravity IDE\Antigravity IDE.exe"' }
+"/t" = { name = "Open Windows Terminal", shell = "wt" }

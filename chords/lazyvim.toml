@@ -1,0 +1,11 @@
+# LazyVim inside Windows Terminal. Needs `vim.opt.title = true` in your Neovim config,
+# so the terminal's window title contains "nvim". Run these from Normal mode.
+name = "LazyVim"
+app = "windowsterminal.exe"
+title = "nvim"
+
+[chords]
+fe = { name = "Explorer", shortcut = "space e" }
+ff = { name = "Find files", shortcut = "space space" }
+fg = { name = "Grep", shortcut = "space /" }
+bd = { name = "Delete buffer", shortcut = "space b d" }

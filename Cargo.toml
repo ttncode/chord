@@ -3,6 +3,9 @@ name = "chord"
 version = "0.1.0"
 edition = "2024"
 
+[dependencies]
+toml = "0.8"
+
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.58", features = [
     "Win32_Foundation",
