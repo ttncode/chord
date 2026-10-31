@@ -171,8 +171,7 @@ pub fn run(chords_dir: PathBuf) {
     panel::start(chords_dir.clone());
 
     // If chord was killed (or crashed) while Caps Lock was held, the keyboard left the light flipped.
-    send_combo(&CAPS);
-    send_combo(&CAPS);
+    resync_caps_light();
     say!("chord running. Chord files: {}", chords_dir.display());
     let (files, errors) = config::load_dir(&chords_dir);
     for f in &files {
@@ -245,11 +244,7 @@ pub fn run(chords_dir: PathBuf) {
                 }
             }
             Effect::ToggleCaps => send_combo(&CAPS),
-            // Toggling twice leaves the state unchanged, and Windows rewrites the light to match it each time.
-            Effect::ResyncCapsLight => {
-                send_combo(&CAPS);
-                send_combo(&CAPS);
-            }
+            Effect::ResyncCapsLight => resync_caps_light(),
             Effect::Quit => {
                 say!("\nemergency exit");
                 panel::remove_tray();
@@ -454,6 +449,15 @@ fn key_input(vk: u16, scan: u16, flags: KEYBD_EVENT_FLAGS) -> INPUT {
             },
         },
     }
+}
+
+/// Toggles Caps Lock twice: the state ends where it was, and Windows rewrites the light each time.
+fn resync_caps_light() {
+    send_combo(&CAPS);
+    // Back to back, the keyboard can drop the second light command while the first is still in
+    // flight, leaving the light on with Caps off.
+    std::thread::sleep(Duration::from_millis(60));
+    send_combo(&CAPS);
 }
 
 /// Presses `keys` in order, then releases them in reverse, as one SendInput call.
