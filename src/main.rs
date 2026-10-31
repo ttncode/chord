@@ -31,7 +31,8 @@ struct Args {
     background: bool,
 }
 
-/// `--chords <dir>` (default `chords` in the current directory), `--background` (no console window).
+/// `--chords <dir>` (default `chords` in the current directory), `--background` (no console window),
+/// `--debug-hints` (write what each label scan saw to `hints-debug.txt`).
 fn args() -> Args {
     let mut args = std::env::args().skip(1);
     let mut parsed = Args { chords_dir: "chords".into(), background: false };
@@ -43,6 +44,8 @@ fn args() -> Args {
                 }
             }
             "--background" => parsed.background = true,
+            #[cfg(windows)]
+            "--debug-hints" => uia::DEBUG.store(true, std::sync::atomic::Ordering::Relaxed),
             _ => {}
         }
     }

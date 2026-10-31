@@ -13,18 +13,22 @@ const MAX_LABELS: usize = 300;
 /// Element rectangles closer than this (pixels) on every edge are the same target.
 const SAME: i32 = 6;
 
-/// The rectangles worth a label, top-left first. Containers (lists, panes) are already left out by
-/// type, so an element inside another one is a part of it (a file row's cells): only the outer one
-/// gets a label. Near-duplicates get one.
-pub fn targets(rects: Vec<Rect>) -> Vec<Rect> {
+/// The rectangles worth a label, top-left first. Each comes with whether it is a real control
+/// (button, link, list row…) rather than a generic clickable box. Containers (lists, panes) are
+/// already left out by type. Anything inside a real control is a part of it (a file row's cells, a
+/// button's text) and gets no label; a generic box holding other clickable things gives way to them
+/// (Vimium's rule for web pages). Near-duplicates get one.
+pub fn targets(elements: Vec<(Rect, bool)>) -> Vec<Rect> {
     let same = |a: Rect, b: Rect| {
         (a.0 - b.0).abs() <= SAME && (a.1 - b.1).abs() <= SAME && (a.2 - b.2).abs() <= SAME && (a.3 - b.3).abs() <= SAME
     };
     let contains = |a: Rect, b: Rect| a.0 <= b.0 && a.1 <= b.1 && a.2 >= b.2 && a.3 >= b.3 && !same(a, b);
-    let rects: Vec<Rect> = rects.into_iter().filter(|r| r.2 > r.0 && r.3 > r.1).collect();
+    let elements: Vec<(Rect, bool)> = elements.into_iter().filter(|(r, _)| r.2 > r.0 && r.3 > r.1).collect();
     let mut kept: Vec<Rect> = Vec::new();
-    for &r in &rects {
-        if !rects.iter().any(|&outer| contains(outer, r)) && !kept.iter().any(|&k| same(k, r)) {
+    for &(r, control) in &elements {
+        let part_of_a_control = elements.iter().any(|&(outer, c)| c && contains(outer, r));
+        let box_around_others = !control && elements.iter().any(|&(inner, _)| contains(r, inner));
+        if !part_of_a_control && !box_around_others && !kept.iter().any(|&k| same(k, r)) {
             kept.push(r);
         }
     }
@@ -54,6 +58,13 @@ pub fn labels(count: usize) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn control(r: Rect) -> (Rect, bool) {
+        (r, true)
+    }
+    fn generic(r: Rect) -> (Rect, bool) {
+        (r, false)
+    }
 
     #[test]
     fn few_labels_are_single_letters() {
@@ -86,32 +97,53 @@ mod tests {
         let row = (0, 0, 500, 20);
         let (name, date) = ((20, 0, 200, 20), (200, 0, 350, 20));
         let other_row = (0, 20, 500, 40);
-        assert_eq!(targets(vec![name, row, date, other_row]), vec![row, other_row]);
+        assert_eq!(targets(vec![generic(name), control(row), generic(date), control(other_row)]), vec![row, other_row]);
+    }
+
+    #[test]
+    fn a_generic_box_around_buttons_gives_way_to_them() {
+        // Web apps wrap buttons in clickable boxes: label New and Import, not the box.
+        let toolbar = (0, 0, 200, 30);
+        let (new, import) = ((10, 5, 60, 25), (70, 5, 130, 25));
+        assert_eq!(targets(vec![generic(toolbar), control(new), control(import)]), vec![new, import]);
+    }
+
+    #[test]
+    fn a_generic_box_with_nothing_inside_keeps_its_label() {
+        let card = (0, 0, 200, 30);
+        assert_eq!(targets(vec![generic(card)]), vec![card]);
+    }
+
+    #[test]
+    fn text_inside_a_button_gets_no_label_of_its_own() {
+        let (button, text) = ((0, 0, 100, 30), (20, 8, 80, 22));
+        assert_eq!(targets(vec![control(button), generic(text)]), vec![button]);
     }
 
     #[test]
     fn near_duplicates_get_one_target() {
         let button = (10, 10, 50, 30);
         let inner = (12, 11, 49, 29);
-        assert_eq!(targets(vec![button, inner]).len(), 1);
+        assert_eq!(targets(vec![control(button), control(inner)]).len(), 1);
     }
 
     #[test]
     fn targets_are_sorted_top_left_first() {
         let (a, b, c) = ((300, 10, 340, 30), (10, 10, 50, 30), (10, 50, 50, 70));
-        assert_eq!(targets(vec![c, a, b]), vec![b, a, c]);
+        assert_eq!(targets(vec![control(c), control(a), control(b)]), vec![b, a, c]);
     }
 
     #[test]
     fn the_cap_applies_after_filtering() {
         // 400 nested pairs: 800 rectangles in, 400 targets, 300 labels.
-        let rects = (0..400).flat_map(|i| [(0, i * 30, 100, i * 30 + 20), (10, i * 30 + 2, 50, i * 30 + 18)]).collect();
+        let rects =
+            (0..400).flat_map(|i| [control((0, i * 30, 100, i * 30 + 20)), generic((10, i * 30 + 2, 50, i * 30 + 18))]).collect();
         assert_eq!(targets(rects).len(), MAX_LABELS);
     }
 
     #[test]
     fn empty_rectangles_are_dropped() {
-        assert!(targets(vec![(10, 10, 10, 30)]).is_empty());
+        assert!(targets(vec![control((10, 10, 10, 30))]).is_empty());
     }
 
     #[test]
