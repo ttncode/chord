@@ -170,6 +170,9 @@ pub fn run(chords_dir: PathBuf) {
     std::thread::spawn(hook_thread);
     panel::start(chords_dir.clone());
 
+    // If chord was killed (or crashed) while Caps Lock was held, the keyboard left the light flipped.
+    send_combo(&CAPS);
+    send_combo(&CAPS);
     say!("chord running. Chord files: {}", chords_dir.display());
     let (files, errors) = config::load_dir(&chords_dir);
     for f in &files {

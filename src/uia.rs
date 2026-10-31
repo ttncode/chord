@@ -8,7 +8,11 @@ use windows::Win32::UI::Accessibility::{
     TreeScope_Descendants, UIA_BoundingRectanglePropertyId, UIA_IsEnabledPropertyId,
     UIA_IsExpandCollapsePatternAvailablePropertyId, UIA_IsInvokePatternAvailablePropertyId,
     UIA_IsKeyboardFocusablePropertyId, UIA_IsOffscreenPropertyId, UIA_IsSelectionItemPatternAvailablePropertyId,
-    UIA_IsTogglePatternAvailablePropertyId, UIA_PROPERTY_ID,
+    UIA_IsTogglePatternAvailablePropertyId, UIA_PROPERTY_ID, UIA_ControlTypePropertyId, UIA_DataGridControlTypeId,
+    UIA_DocumentControlTypeId, UIA_GroupControlTypeId, UIA_HeaderControlTypeId, UIA_ListControlTypeId,
+    UIA_MenuBarControlTypeId, UIA_PaneControlTypeId, UIA_ScrollBarControlTypeId, UIA_StatusBarControlTypeId,
+    UIA_TabControlTypeId, UIA_TableControlTypeId, UIA_TitleBarControlTypeId, UIA_ToolBarControlTypeId,
+    UIA_TreeControlTypeId, UIA_WindowControlTypeId,
 };
 use windows::Win32::UI::WindowsAndMessaging::{GA_ROOT, GetAncestor, WindowFromPoint};
 use windows::core::{Result, VARIANT};
@@ -45,7 +49,30 @@ pub fn clickable_rects(hwnd: HWND) -> Result<Vec<Rect>> {
             clickable = uia.CreateOrCondition(&clickable, &is(id, true)?)?;
         }
         let visible = uia.CreateAndCondition(&is(UIA_IsOffscreenPropertyId, false)?, &is(UIA_IsEnabledPropertyId, true)?)?;
-        let condition = uia.CreateAndCondition(&visible, &clickable)?;
+        // Containers are often keyboard-focusable too, but nobody means to click a whole list or pane.
+        let mut container = uia.CreateFalseCondition()?;
+        for kind in [
+            UIA_ListControlTypeId,
+            UIA_TreeControlTypeId,
+            UIA_PaneControlTypeId,
+            UIA_GroupControlTypeId,
+            UIA_ToolBarControlTypeId,
+            UIA_DataGridControlTypeId,
+            UIA_TableControlTypeId,
+            UIA_HeaderControlTypeId,
+            UIA_WindowControlTypeId,
+            UIA_DocumentControlTypeId,
+            UIA_StatusBarControlTypeId,
+            UIA_TitleBarControlTypeId,
+            UIA_MenuBarControlTypeId,
+            UIA_TabControlTypeId,
+            UIA_ScrollBarControlTypeId,
+        ] {
+            let of_kind = uia.CreatePropertyCondition(UIA_ControlTypePropertyId, &VARIANT::from(kind.0))?;
+            container = uia.CreateOrCondition(&container, &of_kind)?;
+        }
+        let condition =
+            uia.CreateAndCondition(&uia.CreateAndCondition(&visible, &clickable)?, &uia.CreateNotCondition(&container)?)?;
 
         let found = root.FindAllBuildCache(TreeScope_Descendants, &condition, &cache)?;
         let target_root = GetAncestor(hwnd, GA_ROOT);

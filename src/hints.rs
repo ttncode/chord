@@ -9,8 +9,9 @@ pub type Rect = (i32, i32, i32, i32);
 /// Element rectangles closer than this (pixels) on every edge are the same target.
 const SAME: i32 = 6;
 
-/// The rectangles worth a label, top-left first: an element holding another clickable element is a
-/// container (list, pane, toolbar), and only its contents get labels; near-duplicates get one.
+/// The rectangles worth a label, top-left first. Containers (lists, panes) are already left out by
+/// type, so an element inside another one is a part of it (a file row's cells): only the outer one
+/// gets a label. Near-duplicates get one.
 pub fn targets(rects: Vec<Rect>) -> Vec<Rect> {
     let same = |a: Rect, b: Rect| {
         (a.0 - b.0).abs() <= SAME && (a.1 - b.1).abs() <= SAME && (a.2 - b.2).abs() <= SAME && (a.3 - b.3).abs() <= SAME
@@ -19,7 +20,7 @@ pub fn targets(rects: Vec<Rect>) -> Vec<Rect> {
     let rects: Vec<Rect> = rects.into_iter().filter(|r| r.2 > r.0 && r.3 > r.1).collect();
     let mut kept: Vec<Rect> = Vec::new();
     for &r in &rects {
-        if !rects.iter().any(|&inner| contains(r, inner)) && !kept.iter().any(|&k| same(k, r)) {
+        if !rects.iter().any(|&outer| contains(outer, r)) && !kept.iter().any(|&k| same(k, r)) {
             kept.push(r);
         }
     }
@@ -75,11 +76,12 @@ mod tests {
     }
 
     #[test]
-    fn containers_are_dropped_and_their_contents_kept() {
-        let list = (0, 0, 500, 400);
-        let item = (10, 10, 200, 30);
-        let other = (10, 40, 200, 60);
-        assert_eq!(targets(vec![list, item, other]), vec![item, other]);
+    fn nested_targets_keep_only_the_outer_one() {
+        // A file row and its cells: one label for the row, not one per cell.
+        let row = (0, 0, 500, 20);
+        let (name, date) = ((20, 0, 200, 20), (200, 0, 350, 20));
+        let other_row = (0, 20, 500, 40);
+        assert_eq!(targets(vec![name, row, date, other_row]), vec![row, other_row]);
     }
 
     #[test]
