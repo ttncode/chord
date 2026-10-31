@@ -1,14 +1,35 @@
 # Global chords work in every app. Start them with a symbol so they never clash with app chords.
+#   /<letter>  switch to an app (its next window if it's already in front), start it if it isn't running
+#   /w  window   /d  desktop   /s  system   /v  media   /m  mouse
 name = "Global"
 
 [chords]
-"/e" = { name = "File Explorer", shortcut = "win+e" }
+# Apps
+"/a" = { name = "Antigravity", focus = "antigravity ide.exe", launch = 'start "" "%LOCALAPPDATA%\Programs\Antigravity IDE\Antigravity IDE.exe"' }
+"/t" = { name = "Windows Terminal", focus = "windowsterminal.exe", launch = "wt" }
+"/c" = { name = "Chrome", focus = "chrome.exe", launch = "start chrome" }
+"/f" = { name = "Firefox", focus = "firefox.exe", launch = "start firefox" }
+"/p" = { name = "Postman", focus = "postman.exe", launch = 'start "" "%LOCALAPPDATA%\Postman\Postman.exe"' }
+"/b" = { name = "Bruno", focus = "bruno.exe", launch = 'start "" "%LOCALAPPDATA%\Programs\Bruno\Bruno.exe"' }
+"/q" = { name = "DBX (database)", focus = "dbx.exe", launch = 'start "" "%LOCALAPPDATA%\DBX\dbx.exe"' }
+"/k" = { name = "Mattermost", focus = "mattermost.exe", launch = 'start "" "%ProgramFiles%\mattermost-desktop\Mattermost.exe"' }
+"/o" = { name = "Outlook", focus = "outlook.exe", launch = "start outlook" }
+"/g" = { name = "Everything (find files)", focus = "everything.exe", launch = 'start "" "%ProgramFiles(x86)%\Everything\Everything.exe"' }
+"/=" = { name = "Notepad++", focus = "notepad++.exe", launch = "start notepad++" }
+"/e" = { name = "File Explorer (new window)", shortcut = "win+e" }
 
-# Snap the window, Vim directions
-"/wh" = { name = "Window: left half", shortcut = "win+left" }
-"/wl" = { name = "Window: right half", shortcut = "win+right" }
-"/wk" = { name = "Window: maximize", shortcut = "win+up" }
-"/wj" = { name = "Window: restore / minimize", shortcut = "win+down" }
+# Window layout: these send the Win+Alt hotkeys of window.ahk (AutoHotkey must be running)
+"/wh" = { name = "Window: left (repeat: 1/2, 2/3, 1/3)", shortcut = "win+alt+left" }
+"/wl" = { name = "Window: right (repeat: 1/2, 2/3, 1/3)", shortcut = "win+alt+right" }
+"/wk" = { name = "Window: top (repeat: 1/2, 2/3, 1/3)", shortcut = "win+alt+up" }
+"/wj" = { name = "Window: bottom (repeat: 1/2, 2/3, 1/3)", shortcut = "win+alt+down" }
+"/wf" = { name = "Window: maximize", shortcut = "win+alt+enter" }
+"/wc" = { name = "Window: center", shortcut = "win+alt+c" }
+"/w1" = { name = "Window: left third", shortcut = "win+alt+1" }
+"/w2" = { name = "Window: middle third", shortcut = "win+alt+2" }
+"/w3" = { name = "Window: right third", shortcut = "win+alt+3" }
+"/wn" = { name = "Window: restore / minimize", shortcut = "win+down" }
+"/wq" = { name = "Window: close", shortcut = "alt+f4" }
 
 # Virtual desktops
 "/dh" = { name = "Desktop: previous", shortcut = "win+ctrl+left" }
@@ -16,17 +37,44 @@ name = "Global"
 "/dn" = { name = "Desktop: new", shortcut = "win+ctrl+d" }
 "/dx" = { name = "Desktop: close", shortcut = "win+ctrl+f4" }
 
-# Apps: switch to the app (its next window if it's already in front), start it if it isn't running
-"/a" = { name = "Antigravity", focus = "antigravity ide.exe", launch = 'start "" "%LOCALAPPDATA%\Programs\Antigravity IDE\Antigravity IDE.exe"' }
-"/t" = { name = "Windows Terminal", focus = "windowsterminal.exe", launch = "wt" }
+# System
+"/ss" = { name = "Screenshot an area", shortcut = "win+shift+s" }
+"/sv" = { name = "Clipboard history", shortcut = "win+v" }
+"/se" = { name = "Emoji panel", shortcut = "win+." }
+"/sl" = { name = "Lock the screen", shell = "rundll32.exe user32.dll,LockWorkStation" }
+"/st" = { name = "Task Manager", shortcut = "ctrl+shift+esc" }
+"/si" = { name = "Settings", shortcut = "win+i" }
+"/sw" = { name = "Settings: Wi-Fi", shell = "start ms-settings:network-wifi" }
+"/sb" = { name = "Settings: Bluetooth", shell = "start ms-settings:bluetooth" }
+"/sd" = { name = "Settings: display", shell = "start ms-settings:display" }
+"/sk" = { name = "Settings: sound", shell = "start ms-settings:sound" }
+"/sn" = { name = "Notifications", shortcut = "win+n" }
+"/sr" = { name = "Run dialog", shortcut = "win+r" }
+"/sx" = { name = "Power-user menu", shortcut = "win+x" }
+"/r" = { name = "Translate the selection (DeepL)", shortcut = "ctrl+c ctrl+c" }
 
-# Mouse at the pointer
+# Media
+"/vj" = { name = "Volume down", shortcut = "volumedown" }
+"/vk" = { name = "Volume up", shortcut = "volumeup" }
+"/vm" = { name = "Mute", shortcut = "volumemute" }
+"/vp" = { name = "Play / pause", shortcut = "playpause" }
+"/vl" = { name = "Next track", shortcut = "nexttrack" }
+"/vh" = { name = "Previous track", shortcut = "prevtrack" }
+
+# Mouse at the pointer (Vim directions for scrolling)
 "/mc" = { name = "Mouse: click", mouse = "click" }
 "/mr" = { name = "Mouse: right-click", mouse = "right-click" }
 "/md" = { name = "Mouse: double-click", mouse = "double-click" }
+"/mm" = { name = "Mouse: middle-click", mouse = "middle-click" }
 "/mj" = { name = "Mouse: scroll down", mouse = "scroll-down" }
 "/mk" = { name = "Mouse: scroll up", mouse = "scroll-up" }
+"/mh" = { name = "Mouse: scroll left", mouse = "scroll-left" }
+"/ml" = { name = "Mouse: scroll right", mouse = "scroll-right" }
+"/mp" = { name = "Mouse: back", mouse = "back" }
+"/mn" = { name = "Mouse: forward", mouse = "forward" }
+"/mt" = { name = "Go to top", shortcut = "ctrl+home" }
+"/mb" = { name = "Go to bottom", shortcut = "ctrl+end" }
 
-# Hint labels: type the chord, then the yellow label's letters, release Space to click it
-";" = { name = "Click (hints)", hints = "click" }
-"'" = { name = "Right-click (hints)", hints = "right-click" }
+# Hint labels: type the chord, then the label's letters, release Space to click it
+";" = { name = "Click (labels)", hints = "click" }
+"'" = { name = "Right-click (labels)", hints = "right-click" }

@@ -7,7 +7,8 @@ use windows::Win32::Graphics::Dwm::{DWMWA_CLOAKED, DwmGetWindowAttribute};
 use windows::Win32::UI::Input::KeyboardAndMouse::{
     INPUT, INPUT_0, INPUT_MOUSE, MOUSE_EVENT_FLAGS, MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP,
     MOUSEEVENTF_MIDDLEDOWN, MOUSEEVENTF_MIDDLEUP, MOUSEEVENTF_MOVE, MOUSEEVENTF_RIGHTDOWN,
-    MOUSEEVENTF_RIGHTUP, MOUSEEVENTF_WHEEL, MOUSEINPUT, SendInput,
+    MOUSEEVENTF_HWHEEL, MOUSEEVENTF_RIGHTUP, MOUSEEVENTF_WHEEL, MOUSEEVENTF_XDOWN, MOUSEEVENTF_XUP, MOUSEINPUT,
+    SendInput,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     EnumWindows, GW_OWNER, GetForegroundWindow, GetWindow, GetWindowTextLengthW, IsIconic,
@@ -17,6 +18,8 @@ use windows::Win32::UI::WindowsAndMessaging::{
 use crate::config::Mouse;
 
 const WHEEL_STEP: i32 = 120;
+const XBUTTON1: i32 = 1;
+const XBUTTON2: i32 = 2;
 
 /// Brings `exe`'s window to the front, or its next window when one is already in front.
 /// Returns false when the app has no window.
@@ -90,6 +93,11 @@ pub fn mouse(action: Mouse) {
         ),
         Mouse::ScrollUp => send_mouse(&[MOUSEEVENTF_WHEEL], 3 * WHEEL_STEP),
         Mouse::ScrollDown => send_mouse(&[MOUSEEVENTF_WHEEL], -3 * WHEEL_STEP),
+        // Horizontal wheel: positive scrolls right.
+        Mouse::ScrollLeft => send_mouse(&[MOUSEEVENTF_HWHEEL], -3 * WHEEL_STEP),
+        Mouse::ScrollRight => send_mouse(&[MOUSEEVENTF_HWHEEL], 3 * WHEEL_STEP),
+        Mouse::Back => send_mouse(&[MOUSEEVENTF_XDOWN, MOUSEEVENTF_XUP], XBUTTON1),
+        Mouse::Forward => send_mouse(&[MOUSEEVENTF_XDOWN, MOUSEEVENTF_XUP], XBUTTON2),
     }
 }
 

@@ -51,10 +51,10 @@ Each chord has a `name` and exactly one action:
 
 | Action | What it does | Example |
 |---|---|---|
-| `shortcut` | Presses keys. Combos joined with `+`; several combos separated by spaces run one after another | `"ctrl+shift+p"`, `"ctrl+k ctrl+0"`, `"space f f"` |
+| `shortcut` | Presses keys. Combos joined with `+`; several combos separated by spaces run one after another | `"ctrl+shift+p"`, `"ctrl+k ctrl+0"`, `"space f f"`. Media keys: `volumeup`, `volumedown`, `volumemute`, `playpause`, `nexttrack`, `prevtrack`, `printscreen` |
 | `palette` | Opens the command palette (`Ctrl+Shift+P`), waits 0.4 s, types the text, presses Enter. If the palette opens slower, the text lands in your file: use a `shortcut` where one exists | `"Collapse Folders in Explorer"` |
 | `focus` | Brings the app's window to the front (its next window when it's already in front). Optional `launch` runs when it isn't open | `focus = "windowsterminal.exe", launch = "wt"` |
-| `mouse` | `click`, `right-click`, `double-click`, `middle-click`, `scroll-up`, `scroll-down` at the pointer | `mouse = "click"` |
+| `mouse` | `click`, `right-click`, `double-click`, `middle-click`, `scroll-up`, `scroll-down`, `scroll-left`, `scroll-right`, `back`, `forward` at the pointer | `mouse = "click"` |
 | `hints` | Blue labels on every clickable element of the window; type a label, release Space, it's clicked (`click`, `right-click`, `double-click`) | `hints = "click"` |
 | `shell` | Runs the command exactly as written (`cmd /S /C "…"`), without a console window | `'start "" "C:\path\app.exe"'` |
 
@@ -74,7 +74,7 @@ Chord letters: `a`–`z`, `0`–`9` and `` ; = , - . / [ ] ' ``. Start global ch
 
 | File | Chords |
 |---|---|
-| `global.toml` | `/e` File Explorer · `/wh` `/wl` `/wk` `/wj` snap window left / right / maximize / restore · `/dh` `/dl` previous / next desktop · `/dn` new desktop · `/dx` close desktop · `/a` switch to Antigravity · `/t` switch to Windows Terminal · `/mc` `/mr` `/md` click / right-click / double-click · `/mj` `/mk` scroll down / up · `;` click by hint label · `'` right-click by hint label |
+| `global.toml` | Apps: `/a` Antigravity · `/t` Terminal · `/c` Chrome · `/f` Firefox · `/p` Postman · `/b` Bruno · `/q` DBX · `/k` Mattermost · `/o` Outlook · `/g` Everything · `/=` Notepad++ · `/e` new File Explorer. Window (via `window.ahk`): `/wh` `/wl` `/wk` `/wj` halves · `/wf` maximize · `/wc` center · `/w1` `/w2` `/w3` thirds · `/wn` minimize · `/wq` close. Desktops: `/dh` `/dl` `/dn` `/dx`. System: `/ss` screenshot · `/sv` clipboard · `/se` emoji · `/sl` lock · `/st` Task Manager · `/si` `/sw` `/sb` `/sd` `/sk` Settings pages · `/sn` notifications · `/sr` Run · `/sx` power menu · `/r` DeepL. Media: `/vj` `/vk` volume · `/vm` mute · `/vp` play · `/vh` `/vl` tracks. Mouse: `/mc` `/mr` `/md` `/mm` clicks · `/mh` `/mj` `/mk` `/ml` scroll · `/mp` `/mn` back / forward · `/mt` `/mb` top / bottom. Labels: `;` click · `'` right-click |
 | `antigravity.toml` | `mf` `me` `ms` `mv` `mg` `mr` `mt` `mh` menus (File, Edit, Selection, View, Go, Run, Terminal, Help) · `gd` go to definition · `gf` go to file · `cp` command palette · `fe` focus Explorer · `ts` toggle sidebar · `ca` collapse folders · `tt` toggle terminal · `fs` search in files · `fg` source control · `fd` focus editor |
 | `windows-terminal.toml` | `nt` new tab · `cx` close pane · `tn` / `tp` next / previous tab (set the tab switcher to "In order") · `sv` / `sh` split right / down |
 | `lazyvim.toml` | `fe` explorer · `ff` find files · `fg` grep · `bd` delete buffer (Normal mode) |

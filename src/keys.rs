@@ -53,6 +53,13 @@ fn main_key(name: &str) -> Option<Key> {
         "," => plain(0xBC),
         "." => plain(0xBE),
         "/" => plain(0xBF),
+        "printscreen" => ext(0x2C),
+        "volumemute" => ext(0xAD),
+        "volumedown" => ext(0xAE),
+        "volumeup" => ext(0xAF),
+        "nexttrack" => ext(0xB0),
+        "prevtrack" => ext(0xB1),
+        "playpause" => ext(0xB3),
         _ => None,
     }
 }
@@ -130,6 +137,17 @@ mod tests {
     fn plus_and_backtick() {
         assert_eq!(parse_shortcut("alt+shift+plus").unwrap()[0].last(), Some(&k(0xBB)));
         assert_eq!(parse_shortcut("ctrl+`").unwrap()[0].last(), Some(&k(0xC0)));
+    }
+
+    #[test]
+    fn media_keys_are_extended() {
+        assert_eq!(parse_shortcut("volumeup").unwrap(), vec![vec![ext(0xAF)]]);
+        assert_eq!(parse_shortcut("volumedown").unwrap(), vec![vec![ext(0xAE)]]);
+        assert_eq!(parse_shortcut("volumemute").unwrap(), vec![vec![ext(0xAD)]]);
+        assert_eq!(parse_shortcut("playpause").unwrap(), vec![vec![ext(0xB3)]]);
+        assert_eq!(parse_shortcut("nexttrack").unwrap(), vec![vec![ext(0xB0)]]);
+        assert_eq!(parse_shortcut("prevtrack").unwrap(), vec![vec![ext(0xB1)]]);
+        assert_eq!(parse_shortcut("printscreen").unwrap(), vec![vec![ext(0x2C)]]);
     }
 
     #[test]

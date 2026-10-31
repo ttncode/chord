@@ -25,6 +25,11 @@ pub enum Mouse {
     MiddleClick,
     ScrollUp,
     ScrollDown,
+    ScrollLeft,
+    ScrollRight,
+    /// The mouse's side buttons.
+    Back,
+    Forward,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -272,8 +277,12 @@ fn parse_chord(key: &str, value: &toml::Value) -> Result<(Chord, Option<regex::R
                 "middle-click" => Mouse::MiddleClick,
                 "scroll-up" => Mouse::ScrollUp,
                 "scroll-down" => Mouse::ScrollDown,
+                "scroll-left" => Mouse::ScrollLeft,
+                "scroll-right" => Mouse::ScrollRight,
+                "back" => Mouse::Back,
+                "forward" => Mouse::Forward,
                 other => return Err(format!(
-                    "mouse \"{other}\" must be click, right-click, double-click, middle-click, scroll-up or scroll-down"
+                    "mouse \"{other}\" must be click, right-click, double-click, middle-click, scroll-up, scroll-down, scroll-left, scroll-right, back or forward"
                 )),
             })),
             other => return Err(format!("unknown field '{other}'")),
@@ -506,6 +515,20 @@ mod tests {
         );
         assert_eq!(f.chords["/b"].action, Action::Focus { exe: "wt.exe".into(), launch: None });
         assert_eq!(f.chords["/c"].action, Action::Mouse(Mouse::DoubleClick));
+    }
+
+    #[test]
+    fn mouse_side_buttons_and_horizontal_scroll_parse() {
+        let f = global(
+            r#""/1" = { name = "1", mouse = "back" }
+"/2" = { name = "2", mouse = "forward" }
+"/3" = { name = "3", mouse = "scroll-left" }
+"/4" = { name = "4", mouse = "scroll-right" }"#,
+        );
+        assert_eq!(f.chords["/1"].action, Action::Mouse(Mouse::Back));
+        assert_eq!(f.chords["/2"].action, Action::Mouse(Mouse::Forward));
+        assert_eq!(f.chords["/3"].action, Action::Mouse(Mouse::ScrollLeft));
+        assert_eq!(f.chords["/4"].action, Action::Mouse(Mouse::ScrollRight));
     }
 
     #[test]
