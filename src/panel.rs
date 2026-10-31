@@ -560,15 +560,15 @@ fn common_prefix(a: &str, b: &str) -> usize {
     a.char_indices().zip(b.chars()).take_while(|((_, x), y)| x == y).last().map_or(0, |((i, c), _)| i + c.len_utf8())
 }
 
-/// Accent-blue capsules with white letters (the already-typed letters dimmed) at each target's corner.
+/// Small accent-blue tags with white letters (the already-typed letters dimmed) at each target's corner.
 fn render_hints() -> Option<(Canvas, POINT)> {
     let (area, labels, typed) = HINTS.lock().unwrap_or_else(|e| e.into_inner()).clone();
     let s = scale(unsafe { MonitorFromRect(&area, MONITOR_DEFAULTTONEAREST) });
     let colors = palette();
     let mut canvas = Canvas::new(area.right - area.left, area.bottom - area.top)?;
     let mut fonts = Fonts(Vec::new());
-    let font = fonts.make(style::UI_FONTS, s(12), 600);
-    let (height, side) = (s(style::HINT_HEIGHT), s(5));
+    let font = fonts.make(style::UI_FONTS, s(11), 700);
+    let (height, side, radius) = (s(style::HINT_HEIGHT), s(style::HINT_PADDING), s(style::HINT_RADIUS));
     let dim = mix(colors.accent, style::WHITE, 0.55);
     let typed_upper = typed.to_uppercase();
     for (point, label) in &labels {
@@ -576,11 +576,11 @@ fn render_hints() -> Option<(Canvas, POINT)> {
         let label = label.to_uppercase();
         let rest = &label[typed_upper.len().min(label.len())..];
         let (done_width, text_width) = (canvas.measure(&typed_upper, font), canvas.measure(&label, font));
-        let width = (text_width + 2 * side).max(height);
+        let width = text_width + 2 * side;
         let (x, y) = ((point.x - area.left).max(0), (point.y - area.top).max(0));
         let pill = RECT { left: x, top: y, right: x + width, bottom: y + height };
-        canvas.shadow(pill, height / 2, s(4), s(1), 0.35);
-        canvas.round_rect(pill, height / 2, colors.accent);
+        canvas.shadow(pill, radius, s(5), s(2), 0.3);
+        canvas.round_rect(pill, radius, colors.accent);
         let text = RECT { left: x + (width - text_width) / 2, ..pill };
         canvas.text(text, &typed_upper, font, dim, DT_LEFT | DT_VCENTER);
         canvas.text(RECT { left: text.left + done_width, ..text }, rest, font, style::WHITE, DT_LEFT | DT_VCENTER);

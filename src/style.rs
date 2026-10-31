@@ -50,7 +50,10 @@ pub const ROW_HEIGHT: i32 = 30;
 pub const KEYCAP_RADIUS: i32 = 5;
 pub const SHADOW_BLUR: i32 = 22;
 pub const SHADOW_DROP: i32 = 8;
-pub const HINT_HEIGHT: i32 = 18;
+/// Vimium's marker size (11px bold, 1×3px padding, 3px corners), so a label hides as little as it does.
+pub const HINT_HEIGHT: i32 = 15;
+pub const HINT_PADDING: i32 = 3;
+pub const HINT_RADIUS: i32 = 3;
 
 pub const APPEAR_MS: u32 = 160;
 pub const DISAPPEAR_MS: u32 = 120;
