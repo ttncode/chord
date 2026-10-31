@@ -13,7 +13,7 @@ use windows::Win32::UI::Accessibility::{
     UIA_TabItemControlTypeId, UIA_ListItemControlTypeId, UIA_TreeItemControlTypeId, UIA_DataItemControlTypeId,
     UIA_CheckBoxControlTypeId, UIA_RadioButtonControlTypeId, UIA_ComboBoxControlTypeId, UIA_EditControlTypeId,
     UIA_SliderControlTypeId, UIA_NamePropertyId, UIA_ControlTypePropertyId, UIA_DataGridControlTypeId,
-    UIA_DocumentControlTypeId, UIA_GroupControlTypeId, UIA_HeaderControlTypeId, UIA_ListControlTypeId,
+    UIA_DocumentControlTypeId, UIA_HeaderControlTypeId, UIA_ListControlTypeId,
     UIA_MenuBarControlTypeId, UIA_PaneControlTypeId, UIA_ScrollBarControlTypeId, UIA_StatusBarControlTypeId,
     UIA_TabControlTypeId, UIA_TableControlTypeId, UIA_TitleBarControlTypeId, UIA_ToolBarControlTypeId,
     UIA_TreeControlTypeId, UIA_WindowControlTypeId,
@@ -76,12 +76,13 @@ pub fn clickable_rects(hwnd: HWND) -> Result<Vec<(Rect, bool)>> {
         }
         let visible = uia.CreateAndCondition(&is(UIA_IsOffscreenPropertyId, false)?, &is(UIA_IsEnabledPropertyId, true)?)?;
         // Containers are often keyboard-focusable too, but nobody means to click a whole list or pane.
+        // Groups are not on the list: web apps (Postman) report their buttons as groups, and a group
+        // around other clickable things gives way to them anyway (see `hints::targets`).
         let mut container = uia.CreateFalseCondition()?;
         for kind in [
             UIA_ListControlTypeId,
             UIA_TreeControlTypeId,
             UIA_PaneControlTypeId,
-            UIA_GroupControlTypeId,
             UIA_ToolBarControlTypeId,
             UIA_DataGridControlTypeId,
             UIA_TableControlTypeId,
