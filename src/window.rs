@@ -24,11 +24,8 @@ pub fn focus_app(exe: &str, exe_of: impl Fn(HWND) -> Option<String>) -> bool {
     let windows: Vec<HWND> = app_windows().into_iter().filter(|&h| exe_of(h).as_deref() == Some(exe)).collect();
     let Some(&first) = windows.first() else { return false };
     let current = unsafe { GetForegroundWindow() };
-    // Windows are listed front to back, so the one after the current one is the next to cycle to.
-    let target = match windows.iter().position(|&h| h == current) {
-        Some(i) => windows[(i + 1) % windows.len()],
-        None => first,
-    };
+    // Front to back: the bottom-most one has waited longest, so taking it each time visits every window.
+    let target = if windows.contains(&current) { *windows.last().unwrap_or(&first) } else { first };
     bring_to_front(target);
     true
 }

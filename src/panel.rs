@@ -2,7 +2,7 @@
 //! Both live on one GUI thread; other threads talk to it only through `show`/`hide`/`remove_tray`.
 
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicIsize, Ordering};
+use std::sync::atomic::{AtomicIsize, AtomicU32, Ordering};
 use std::sync::{Mutex, OnceLock};
 
 use windows::Win32::Foundation::{COLORREF, HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
@@ -25,7 +25,8 @@ use windows::Win32::UI::WindowsAndMessaging::{
     TPM_RETURNCMD, TPM_RIGHTBUTTON, TrackPopupMenu, TranslateMessage, WM_APP, WM_LBUTTONUP,
     PBT_APMRESUMEAUTOMATIC, WM_PAINT, WM_POWERBROADCAST, WM_RBUTTONUP, WM_WTSSESSION_CHANGE,
     WTS_SESSION_UNLOCK, WNDCLASSW, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_POPUP,
-    LWA_COLORKEY, SetLayeredWindowAttributes, WS_EX_LAYERED, WS_EX_TRANSPARENT,
+    LWA_COLORKEY, RegisterWindowMessageW, SendMessageW, SetLayeredWindowAttributes, WS_EX_LAYERED,
+    WS_EX_TRANSPARENT,
 };
 use windows::core::{PCWSTR, w};
 
@@ -51,6 +52,8 @@ static OVERLAY: AtomicIsize = AtomicIsize::new(0);
 static HINTS: Mutex<(RECT, Vec<(POINT, String)>)> = Mutex::new((RECT { left: 0, top: 0, right: 0, bottom: 0 }, Vec::new()));
 static LINES: Mutex<Vec<String>> = Mutex::new(Vec::new());
 static CHORDS_DIR: OnceLock<PathBuf> = OnceLock::new();
+/// Explorer broadcasts this after it restarts; tray icons must be added again.
+static TASKBAR_CREATED: AtomicU32 = AtomicU32::new(0);
 
 fn panel() -> Option<HWND> {
     match PANEL.load(Ordering::Acquire) {
@@ -114,6 +117,7 @@ pub fn start(chords_dir: PathBuf) {
             OVERLAY.store(overlay.0 as isize, Ordering::Release);
         }
         add_tray(hwnd);
+        TASKBAR_CREATED.store(RegisterWindowMessageW(w!("TaskbarCreated")), Ordering::Release);
         // Unlock events arrive as WM_WTSSESSION_CHANGE; resume as WM_POWERBROADCAST (top-level windows get it).
         let _ = WTSRegisterSessionNotification(hwnd, NOTIFY_FOR_THIS_SESSION);
 
@@ -131,6 +135,15 @@ pub fn show(lines: Vec<String>) {
     if let Some(hwnd) = panel() {
         unsafe {
             let _ = PostMessageW(hwnd, WM_PANEL, WPARAM(1), LPARAM(0));
+        }
+    }
+}
+
+/// Hides the panel and waits until it's gone (before a hint scan, so it doesn't cover targets).
+pub fn hide_now() {
+    if let Some(hwnd) = panel() {
+        unsafe {
+            SendMessageW(hwnd, WM_PANEL, WPARAM(0), LPARAM(0));
         }
     }
 }
@@ -205,6 +218,10 @@ fn add_tray(hwnd: HWND) {
 }
 
 unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
+    if msg != 0 && msg == TASKBAR_CREATED.load(Ordering::Acquire) {
+        add_tray(hwnd);
+        return LRESULT(0);
+    }
     match msg {
         WM_PANEL => {
             if wparam.0 == 1 { place_and_show(hwnd) } else { unsafe { let _ = ShowWindow(hwnd, SW_HIDE); } }
@@ -290,7 +307,7 @@ fn paint(hwnd: HWND) {
         FillRect(hdc, &ps.rcPaint, background);
         let (line, pad, width) = (px(hwnd, LINE_HEIGHT), px(hwnd, PADDING), px(hwnd, WIDTH));
         let font: HFONT = CreateFontW(px(hwnd, 18), 0, 0, 0, 400, 0, 0, 0, 0, 0, 0, 0, 0, w!("Consolas"));
-        SelectObject(hdc, font);
+        let previous_font = SelectObject(hdc, font);
         SetBkMode(hdc, TRANSPARENT);
         for (i, text_line) in lines.iter().enumerate() {
             // Header in accent colour, chord lines in light grey.
@@ -304,6 +321,8 @@ fn paint(hwnd: HWND) {
             let mut text: Vec<u16> = text_line.encode_utf16().collect();
             DrawTextW(hdc, &mut text, &mut rect, DT_LEFT | DT_SINGLELINE | DT_NOPREFIX);
         }
+        // A font still selected into the DC can't be deleted; put the old one back first.
+        SelectObject(hdc, previous_font);
         let _ = windows::Win32::Graphics::Gdi::DeleteObject(font);
         let _ = windows::Win32::Graphics::Gdi::DeleteObject(background);
         let _ = EndPaint(hwnd, &ps);
@@ -328,7 +347,7 @@ fn paint_hints(hwnd: HWND) {
         FillRect(hdc, &ps.rcPaint, clear);
         let label_brush = CreateSolidBrush(COLORREF(0x0000_D7FF));
         let font: HFONT = CreateFontW(px(hwnd, 15), 0, 0, 0, 700, 0, 0, 0, 0, 0, 0, 0, 0, w!("Consolas"));
-        SelectObject(hdc, font);
+        let previous_font = SelectObject(hdc, font);
         SetBkMode(hdc, TRANSPARENT);
         SetTextColor(hdc, COLORREF(0x0000_0000));
         let (char_w, h) = (px(hwnd, 9), px(hwnd, 18));
@@ -340,6 +359,8 @@ fn paint_hints(hwnd: HWND) {
             let mut text: Vec<u16> = label.to_uppercase().encode_utf16().collect();
             DrawTextW(hdc, &mut text, &mut rect, DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
         }
+        // A font still selected into the DC can't be deleted; put the old one back first.
+        SelectObject(hdc, previous_font);
         let _ = windows::Win32::Graphics::Gdi::DeleteObject(font);
         let _ = windows::Win32::Graphics::Gdi::DeleteObject(label_brush);
         let _ = windows::Win32::Graphics::Gdi::DeleteObject(clear);

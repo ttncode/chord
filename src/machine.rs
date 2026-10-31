@@ -83,10 +83,15 @@ pub struct Machine {
     last: Chord,
     last_space_ms: u32,
     last_caps_ms: u32,
+    /// Only the most recently pressed key auto-repeats, so silence proves a lost release only for it.
+    last_down: u16,
+    last_event_ms: u32,
 }
 
-/// A held key auto-repeats well within this; longer silence means its release was lost.
+/// A held key that was pressed last auto-repeats well within this; longer silence means its release was lost.
 const STALE_MS: u32 = 1_500;
+/// No key at all for this long in chord mode: assume Space's release was lost after typing.
+const IDLE_MS: u32 = 15_000;
 const MODIFIER_KEYS: [u16; 8] = [0xA0, 0xA1, VK_LCONTROL, VK_RCONTROL, VK_LMENU, VK_RMENU, VK_LWIN, VK_RWIN];
 
 impl Machine {
@@ -102,19 +107,21 @@ impl Machine {
             last: Chord::new(),
             last_space_ms: 0,
             last_caps_ms: 0,
+            last_down: 0,
+            last_event_ms: 0,
         }
     }
 
     /// `now_ms` is the event's timestamp (KBDLLHOOKSTRUCT.time).
     pub fn key_at(&mut self, vk: u16, down: bool, now_ms: u32) -> Decision {
-        if down && self.caps_held && vk == VK_SPACE && now_ms.wrapping_sub(self.last_caps_ms) > STALE_MS {
+        let idle = now_ms.wrapping_sub(self.last_event_ms) > IDLE_MS;
+        let caps_lost = self.last_down == VK_CAPITAL && now_ms.wrapping_sub(self.last_caps_ms) > STALE_MS;
+        if down && self.caps_held && vk == VK_SPACE && (caps_lost || idle) {
             self.caps_held = false;
             self.blocked[VK_CAPITAL as usize] = false;
         }
-        let space_lost = down
-            && self.chord_mode
-            && vk != VK_SPACE
-            && now_ms.wrapping_sub(self.last_space_ms) > STALE_MS;
+        let space_silent = self.last_down == VK_SPACE && now_ms.wrapping_sub(self.last_space_ms) > STALE_MS;
+        let space_lost = down && self.chord_mode && vk != VK_SPACE && (space_silent || idle);
         if space_lost {
             self.chord_mode = false;
             self.space_held = false;
@@ -124,6 +131,10 @@ impl Machine {
             VK_SPACE => self.last_space_ms = now_ms,
             VK_CAPITAL => self.last_caps_ms = now_ms,
             _ => {}
+        }
+        self.last_event_ms = now_ms;
+        if down {
+            self.last_down = vk;
         }
         let decision = self.key(vk, down);
         if space_lost {
@@ -488,6 +499,44 @@ mod tests {
             Decision { block: false, effect: Some(Effect::Cancel) }
         );
         assert_eq!(m.key_at(D, true, 2_020), pass());
+    }
+
+    #[test]
+    fn pause_after_typing_keeps_chord_mode() {
+        // Space stops auto-repeating once a letter is pressed, so silence after typing proves nothing.
+        let mut m = Machine::new();
+        m.key_at(VK_CAPITAL, true, 0);
+        m.key_at(VK_SPACE, true, 10);
+        m.key_at(VK_CAPITAL, false, 20);
+        m.key_at(G, true, 100);
+        m.key_at(G, false, 150);
+        assert_eq!(m.key_at(D, true, 3_000), block_with(Effect::Show(chord("gd"))));
+    }
+
+    #[test]
+    fn caps_repeat_after_a_pause_still_fires() {
+        let mut m = Machine::new();
+        m.key_at(VK_CAPITAL, true, 0);
+        m.key_at(VK_SPACE, true, 10);
+        m.key_at(VK_CAPITAL, false, 20);
+        m.key_at(G, true, 100);
+        m.key_at(G, false, 150);
+        m.key_at(VK_CAPITAL, true, 200);
+        m.key_at(VK_CAPITAL, false, 250);
+        assert_eq!(m.key_at(VK_CAPITAL, true, 4_000), block_with(Effect::FireKeep(chord("g"))));
+    }
+
+    #[test]
+    fn long_idle_in_chord_mode_gives_up() {
+        let mut m = Machine::new();
+        m.key_at(VK_CAPITAL, true, 0);
+        m.key_at(VK_SPACE, true, 10);
+        m.key_at(G, true, 100);
+        m.key_at(G, false, 150);
+        assert_eq!(
+            m.key_at(D, true, 30_000),
+            Decision { block: false, effect: Some(Effect::Cancel) }
+        );
     }
 
     #[test]

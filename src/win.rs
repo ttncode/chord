@@ -148,7 +148,7 @@ impl Hints {
                 unsafe {
                     let _ = SetCursorPos(point.x, point.y);
                 }
-                window::mouse(self.kind);
+                without_shift(|| window::mouse(self.kind));
             }
             None => say!("  -> no hint '{label}'"),
         }
@@ -200,9 +200,12 @@ pub fn run(chords_dir: PathBuf) {
                     }
                 }
                 let Some(s) = &session else { continue };
-                match s.hints_kind(&buffer).and_then(|kind| Hints::scan(s.hwnd, &buffer, kind)) {
+                let kind = s.hints_kind(&buffer);
+                if kind.is_some() {
+                    panel::hide_now();
+                }
+                match kind.and_then(|kind| Hints::scan(s.hwnd, &buffer, kind)) {
                     Some(h) => {
-                        panel::hide();
                         h.show("");
                         hints = Some(h);
                     }
@@ -292,7 +295,7 @@ fn fire(dir: &Path, chord: &str) {
     if !found.shadowed.is_empty() {
         say!("  ! '{chord}' is also in {}; {} wins", found.shadowed.join(", "), found.file.file);
     }
-    run_action(&found.chord.action);
+    without_shift(|| run_action(&found.chord.action));
 }
 
 fn run_action(action: &Action) {
@@ -337,6 +340,19 @@ fn run_shell(command: &str) {
     if let Err(e) = spawned {
         say!("  ! could not run `{command}`: {e}");
     }
+}
+
+/// The Shift trick leaves Shift physically held; lift it (tagged, so the hook ignores it) so `gd`
+/// sends F12, not Shift+F12, and a hint click isn't a Shift+click. Pressed again afterwards.
+fn without_shift(action: impl FnOnce()) {
+    let held: Vec<u16> = [0xA0u16, 0xA1].into_iter().filter(|&vk| unsafe { GetAsyncKeyState(vk as i32) } < 0).collect();
+    let send = |vk: u16, up: bool| {
+        let flags = if up { KEYEVENTF_KEYUP } else { KEYBD_EVENT_FLAGS(0) };
+        unsafe { SendInput(&[key_input(vk, 0, flags)], size_of::<INPUT>() as i32) };
+    };
+    held.iter().for_each(|&vk| send(vk, true));
+    action();
+    held.iter().for_each(|&vk| send(vk, false));
 }
 
 /// Asks the hook thread to forget all key state and reinstall the hook (after unlock or sleep).
