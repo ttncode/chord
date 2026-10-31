@@ -4,7 +4,7 @@
 use windows::Win32::Foundation::{HWND, POINT, RECT};
 use windows::Win32::System::Com::{CLSCTX_INPROC_SERVER, COINIT_MULTITHREADED, CoCreateInstance, CoInitializeEx};
 use windows::Win32::UI::Accessibility::{
-    AutomationElementMode_None, CUIAutomation, IUIAutomation, IUIAutomationCondition, TreeScope_Children,
+    AutomationElementMode_None, CUIAutomation, IUIAutomation, IUIAutomationCondition, IUIAutomationElement, TreeScope_Children,
     TreeScope_Descendants, UIA_BoundingRectanglePropertyId, UIA_IsEnabledPropertyId,
     UIA_IsExpandCollapsePatternAvailablePropertyId, UIA_IsInvokePatternAvailablePropertyId,
     UIA_IsKeyboardFocusablePropertyId, UIA_IsOffscreenPropertyId, UIA_IsSelectionItemPatternAvailablePropertyId,
@@ -71,27 +71,34 @@ pub fn clickable_rects(hwnd: HWND) -> Result<Vec<Rect>> {
         let condition =
             uia.CreateAndCondition(&uia.CreateAndCondition(&visible, &clickable)?, &uia.CreateNotCondition(&container)?)?;
 
-        // An open modal (a web dialog, or one an app draws inside its window): only its contents count.
-        let open_dialog = uia.CreateAndCondition(&is(UIA_IsDialogPropertyId, true)?, &is(UIA_IsOffscreenPropertyId, false)?)?;
-        let dialogs = root.FindAll(TreeScope_Descendants, &open_dialog)?;
-        let scope = match dialogs.Length()? {
-            0 => root,
-            // The last one in the tree is the one on top.
-            n => dialogs.GetElement(n - 1)?,
-        };
-        let found = scope.FindAllBuildCache(TreeScope_Descendants, &condition, &cache)?;
         let target_root = GetAncestor(hwnd, GA_ROOT);
-        let mut rects: Vec<Rect> = Vec::new();
-        for i in 0..found.Length()? {
-            let Ok(rect) = found.GetElement(i).and_then(|e| e.CachedBoundingRectangle()) else { continue };
-            // Covered by another window (menus, overlays, other apps): not clickable here.
-            if let Some(center) = center(rect) {
-                if GetAncestor(WindowFromPoint(center), GA_ROOT) == target_root {
-                    rects.push((rect.left, rect.top, rect.right, rect.bottom));
+        let rects_in = |scope: &IUIAutomationElement| -> Result<Vec<Rect>> {
+            let found = scope.FindAllBuildCache(TreeScope_Descendants, &condition, &cache)?;
+            let mut rects: Vec<Rect> = Vec::new();
+            for i in 0..found.Length()? {
+                let Ok(rect) = found.GetElement(i).and_then(|e| e.CachedBoundingRectangle()) else { continue };
+                // Covered by another window (menus, overlays, other apps): not clickable here.
+                if let Some(center) = center(rect) {
+                    if GetAncestor(WindowFromPoint(center), GA_ROOT) == target_root {
+                        rects.push((rect.left, rect.top, rect.right, rect.bottom));
+                    }
                 }
             }
+            Ok(rects)
+        };
+
+        // An open modal (a web dialog, or one an app draws inside its window): only its contents count.
+        // Closed ones can linger in the tree empty, so a dialog wins only when something in it is clickable.
+        let open_dialog = uia.CreateAndCondition(&is(UIA_IsDialogPropertyId, true)?, &is(UIA_IsOffscreenPropertyId, false)?)?;
+        let dialogs = root.FindAll(TreeScope_Descendants, &open_dialog)?;
+        // The last one in the tree is the one on top.
+        for i in (0..dialogs.Length()?).rev() {
+            let rects = rects_in(&dialogs.GetElement(i)?)?;
+            if !rects.is_empty() {
+                return Ok(rects);
+            }
         }
-        Ok(rects)
+        rects_in(&root)
     }
 }
 
