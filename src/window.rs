@@ -11,7 +11,7 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{
     SendInput,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-    EnumWindows, GW_OWNER, GetForegroundWindow, GetWindow, GetWindowTextLengthW, IsIconic,
+    EnumWindows, GW_OWNER, GetForegroundWindow, GetWindow, GetWindowTextLengthW, GetWindowThreadProcessId, IsIconic,
     IsWindowVisible, SW_RESTORE, SetForegroundWindow, ShowWindow,
 };
 
@@ -31,6 +31,12 @@ pub fn focus_app(exe: &str, exe_of: impl Fn(HWND) -> Option<String>) -> bool {
     let target = if windows.contains(&current) { *windows.last().unwrap_or(&first) } else { first };
     bring_to_front(target);
     true
+}
+
+pub fn pid_of(hwnd: HWND) -> u32 {
+    let mut pid = 0;
+    unsafe { GetWindowThreadProcessId(hwnd, Some(&mut pid)) };
+    pid
 }
 
 /// Top-level windows a user would switch to with Alt+Tab, front to back.

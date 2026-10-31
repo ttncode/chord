@@ -20,7 +20,7 @@ use windows::Win32::UI::Accessibility::{
 };
 use windows::Win32::Foundation::{BOOL, LPARAM, WPARAM};
 use windows::Win32::UI::WindowsAndMessaging::{
-    EnumChildWindows, GA_ROOT, GetAncestor, GetClassNameW, SMTO_ABORTIFHUNG, SendMessageTimeoutW, WM_GETOBJECT,
+    EnumChildWindows, GetClassNameW, GetWindowRect, SMTO_ABORTIFHUNG, SendMessageTimeoutW, WM_GETOBJECT,
     WindowFromPoint,
 };
 use windows::core::{Result, VARIANT};
@@ -56,7 +56,7 @@ pub fn clickable_rects(hwnd: HWND) -> Result<Vec<(Rect, bool)>> {
         // Safe to repeat: later calls on this thread just return S_FALSE.
         let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
         let uia: IUIAutomation = CoCreateInstance(&CUIAutomation, None, CLSCTX_INPROC_SERVER)?;
-        wake_chromium(hwnd);
+        let child_windows = wake_chromium(hwnd);
         let root = uia.ElementFromHandle(hwnd)?;
         // Chromium/Electron build their accessibility tree lazily on the first query; this wakes it.
         let _ = root.FindAll(TreeScope_Children, &uia.CreateTrueCondition()?);
@@ -106,7 +106,7 @@ pub fn clickable_rects(hwnd: HWND) -> Result<Vec<(Rect, bool)>> {
         let condition =
             uia.CreateAndCondition(&uia.CreateAndCondition(&visible, &clickable)?, &uia.CreateNotCondition(&container)?)?;
 
-        let target_root = GetAncestor(hwnd, GA_ROOT);
+        let app = crate::window::pid_of(hwnd);
         let debug = DEBUG.load(Ordering::Relaxed);
         let mut log = String::new();
         let mut rects_in = |scope: &IUIAutomationElement| -> Result<Vec<(Rect, bool)>> {
@@ -117,7 +117,8 @@ pub fn clickable_rects(hwnd: HWND) -> Result<Vec<(Rect, bool)>> {
                 let Ok(rect) = element.CachedBoundingRectangle() else { continue };
                 let kind = element.CachedControlType().unwrap_or_default();
                 // Covered by another window (menus, overlays, other apps): not clickable here.
-                let shown = center(rect).is_some_and(|c| GetAncestor(WindowFromPoint(c), GA_ROOT) == target_root);
+                // Any window of the same app counts as not covering (Electron stacks several).
+                let shown = center(rect).is_some_and(|c| crate::window::pid_of(WindowFromPoint(c)) == app);
                 if debug {
                     let name = element.CachedName().map(|n| n.to_string()).unwrap_or_default();
                     let fate = if shown { "" } else { "  [covered or empty]" };
@@ -168,14 +169,44 @@ pub fn clickable_rects(hwnd: HWND) -> Result<Vec<(Rect, bool)>> {
                 break;
             }
         }
-        let result = match result {
+        let mut result = match result {
             Some(rects) => rects,
             None => rects_in(&root)?,
         };
+        // After a minimize, Chromium can lose the page from the outer window's tree while the page's
+        // own window still has it: read from there too.
+        let pages = child_windows.iter().filter(|(_, class)| class == "Chrome_RenderWidgetHostHWND");
+        for (page, _) in pages {
+            if !result.is_empty() {
+                break;
+            }
+            if let Ok(page_root) = uia.ElementFromHandle(*page) {
+                result = rects_in(&page_root)?;
+            }
+        }
         if debug {
+            let mut window_rect = RECT::default();
+            let _ = GetWindowRect(hwnd, &mut window_rect);
+            let r = (window_rect.left, window_rect.top, window_rect.right, window_rect.bottom);
+            let header = format!("===== window {:?} {r:?} {:?}\n", hwnd.0, root.CurrentName().map(|n| n.to_string()).unwrap_or_default());
+            log = header + &log;
+            let classes: Vec<&String> = child_windows.iter().map(|(_, class)| class).collect();
+            log += &format!("\nchild windows: {classes:?}\n");
             log += &format!("\n{} dialog(s) open:\n{dialog_log}\nEVERY ELEMENT (offscreen, enabled, focusable, invokable):\n", dialogs.len());
             log += &every_element(&uia, &root).unwrap_or_else(|e| format!("could not list: {e}\n"));
-            let _ = std::fs::write("hints-debug.txt", log);
+            for (page, class) in &child_windows {
+                if class == "Chrome_RenderWidgetHostHWND" {
+                    log += "\nEVERY ELEMENT UNDER THE PAGE WINDOW:\n";
+                    match uia.ElementFromHandle(*page) {
+                        Ok(page_root) => log += &every_element(&uia, &page_root).unwrap_or_else(|e| format!("could not list: {e}\n")),
+                        Err(e) => log += &format!("could not open: {e}\n"),
+                    }
+                }
+            }
+            use std::io::Write as _;
+            if let Ok(mut file) = std::fs::OpenOptions::new().append(true).create(true).open("hints-debug.txt") {
+                let _ = file.write_all(log.as_bytes());
+            }
             say!("  (debug: wrote hints-debug.txt)");
         }
         Ok(result)
@@ -184,11 +215,14 @@ pub fn clickable_rects(hwnd: HWND) -> Result<Vec<(Rect, bool)>> {
 
 /// Chromium (Chrome, Electron) drops its page accessibility tree while unused or minimized and
 /// rebuilds it only when asked through the page's own window, not the outer one.
-fn wake_chromium(hwnd: HWND) {
-    unsafe extern "system" fn ask(child: HWND, _: LPARAM) -> BOOL {
+/// Returns `hwnd`'s child windows with their class names.
+fn wake_chromium(hwnd: HWND) -> Vec<(HWND, String)> {
+    unsafe extern "system" fn ask(child: HWND, classes: LPARAM) -> BOOL {
+        let classes = unsafe { &mut *(classes.0 as *mut Vec<(HWND, String)>) };
         let mut class = [0u16; 64];
         let len = unsafe { GetClassNameW(child, &mut class) } as usize;
-        if String::from_utf16_lossy(&class[..len]) == "Chrome_RenderWidgetHostHWND" {
+        let class = String::from_utf16_lossy(&class[..len]);
+        if class == "Chrome_RenderWidgetHostHWND" {
             const OBJID_CLIENT: isize = -4;
             const UIA_ROOT_OBJECT_ID: isize = -25;
             for object in [OBJID_CLIENT, UIA_ROOT_OBJECT_ID] {
@@ -197,11 +231,14 @@ fn wake_chromium(hwnd: HWND) {
                 };
             }
         }
+        classes.push((child, class));
         true.into()
     }
+    let mut classes: Vec<(HWND, String)> = Vec::new();
     unsafe {
-        let _ = EnumChildWindows(hwnd, Some(ask), LPARAM(0));
+        let _ = EnumChildWindows(hwnd, Some(ask), LPARAM(&mut classes as *mut _ as isize));
     }
+    classes
 }
 
 /// True when the element found at `element`'s centre is `element` or inside it: nothing covers it.

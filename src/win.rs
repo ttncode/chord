@@ -115,6 +115,9 @@ struct Hints {
 
 impl Hints {
     fn scan(hwnd: HWND, key: &str, kind: Mouse) -> Option<Self> {
+        if uia::DEBUG.load(std::sync::atomic::Ordering::Relaxed) {
+            let _ = std::fs::write("hints-debug.txt", "");
+        }
         // Electron apps (Postman, Antigravity) build their accessibility tree only once asked, and
         // drop it again after a while unused: a read can fail or come back empty while it rebuilds.
         let mut result = uia::clickable_rects(hwnd).map(hints::targets);
@@ -126,16 +129,16 @@ impl Hints {
             result = uia::clickable_rects(hwnd).map(hints::targets);
         }
         let rects = match result {
-            Ok(rects) => rects,
+            Ok(rects) if !rects.is_empty() => rects,
+            Ok(_) => {
+                say!("  -> no clickable elements found");
+                return None;
+            }
             Err(e) => {
                 say!("  ! could not read this window's buttons: {e}");
                 return None;
             }
         };
-        if rects.is_empty() {
-            say!("  -> no clickable elements found");
-            return None;
-        }
         let mut area = RECT::default();
         unsafe {
             let _ = GetWindowRect(hwnd, &mut area);
