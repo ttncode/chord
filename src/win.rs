@@ -121,14 +121,15 @@ fn run_action(action: &Action) {
         Action::Palette(text) => {
             let shortcut = |s| parse_shortcut(s).expect("built-in shortcut").remove(0);
             send_combo(&shortcut("ctrl+shift+p"));
-            std::thread::sleep(Duration::from_millis(150));
+            // shortcut: fixed wait for the palette; if it opens later, the text lands in the editor. Upgrade to a UI Automation wait in the hints phase.
+            std::thread::sleep(Duration::from_millis(400));
             type_text(text);
             std::thread::sleep(Duration::from_millis(50));
             send_combo(&shortcut("enter"));
         }
         Action::Shell(command) => {
             let spawned = std::process::Command::new("cmd")
-                .raw_arg(format!("/C {command}"))
+                .raw_arg(config::cmd_line(command))
                 .creation_flags(CREATE_NO_WINDOW)
                 .spawn();
             if let Err(e) = spawned {

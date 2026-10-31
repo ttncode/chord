@@ -3,7 +3,9 @@ app = "windowsterminal.exe"
 
 [chords]
 nt = { name = "New tab", shortcut = "ctrl+shift+t" }
-ct = { name = "Close tab", shortcut = "ctrl+shift+w" }
+cx = { name = "Close pane (closes the tab when it has one pane)", shortcut = "ctrl+shift+w" }
+# Next/previous in tab order only if Settings > Interaction > "Tab switcher interface style" is "In order";
+# with "Most recently used" they jump to the last-used tab.
 tn = { name = "Next tab", shortcut = "ctrl+tab" }
 tp = { name = "Previous tab", shortcut = "ctrl+shift+tab" }
 sv = { name = "Split pane right", shortcut = "alt+shift+plus" }

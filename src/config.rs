@@ -139,6 +139,12 @@ pub fn load_dir(dir: &std::path::Path) -> (Vec<ChordFile>, Vec<String>) {
     (files, errors)
 }
 
+/// Arguments for `cmd` that run a `shell` action exactly as written.
+/// `/S` makes cmd strip only the outer quotes we add, never quotes inside the command.
+pub fn cmd_line(command: &str) -> String {
+    format!("/S /C \"{command}\"")
+}
+
 fn parse_chord(key: &str, value: &toml::Value) -> Result<Chord, String> {
     if key.is_empty() || !key.chars().all(|c| CHORD_CHARS.contains(c)) {
         return Err(format!("only these characters are allowed: {CHORD_CHARS}"));
@@ -237,6 +243,12 @@ mod tests {
     fn unknown_top_level_key_is_error() {
         let (_, errors) = parse_file("x.toml", "nmae = \"X\"\n[chords]\n");
         assert!(errors.iter().any(|e| e.contains("nmae")), "{errors:?}");
+    }
+
+    #[test]
+    fn cmd_line_keeps_inner_quotes() {
+        let command = r#""C:\Program Files\X\x.exe" --open "a b""#;
+        assert_eq!(cmd_line(command), format!("/S /C \"{command}\""));
     }
 
     #[test]

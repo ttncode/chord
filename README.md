@@ -42,8 +42,8 @@ Each chord has a `name` and exactly one action:
 | Action | What it does | Example |
 |---|---|---|
 | `shortcut` | Presses keys. Combos joined with `+`; several combos separated by spaces run one after another | `"ctrl+shift+p"`, `"ctrl+k ctrl+0"`, `"space f f"` |
-| `palette` | Opens the command palette (`Ctrl+Shift+P`), types the text, presses Enter | `"Collapse Folders in Explorer"` |
-| `shell` | Runs a command with `cmd /C`, without a console window | `'start "" "C:\path\app.exe"'` |
+| `palette` | Opens the command palette (`Ctrl+Shift+P`), waits 0.4 s, types the text, presses Enter. If the palette opens slower, the text lands in your file: use a `shortcut` where one exists | `"Collapse Folders in Explorer"` |
+| `shell` | Runs the command exactly as written (`cmd /S /C "…"`), without a console window | `'start "" "C:\path\app.exe"'` |
 
 Key names: `ctrl shift alt win`, `a`–`z`, `0`–`9`, `f1`–`f24`, `left right up down home end pageup pagedown insert delete`, `backspace enter esc tab space`, and `` ` - = [ ] \ ; ' , . / ``. Write `+` as `plus`.
 
@@ -61,7 +61,7 @@ Chord letters: `a`–`z`, `0`–`9` and `` ; = , - . / [ ] ' ``. Start global ch
 |---|---|
 | `global.toml` | `/e` File Explorer · `/wh` `/wl` `/wk` `/wj` snap window left / right / maximize / restore · `/dh` `/dl` previous / next desktop · `/dn` new desktop · `/dx` close desktop · `/a` open Antigravity · `/t` open Windows Terminal |
 | `antigravity.toml` | `mf` `me` `ms` `mv` `mg` `mr` `mt` `mh` menus (File, Edit, Selection, View, Go, Run, Terminal, Help) · `gd` go to definition · `gf` go to file · `cp` command palette · `fe` focus Explorer · `ts` toggle sidebar · `ca` collapse folders · `tt` toggle terminal · `fs` search in files · `fg` source control · `fd` focus editor |
-| `windows-terminal.toml` | `nt` new tab · `ct` close tab · `tn` / `tp` next / previous tab · `sv` / `sh` split right / down |
+| `windows-terminal.toml` | `nt` new tab · `cx` close pane · `tn` / `tp` next / previous tab (set the tab switcher to "In order") · `sv` / `sh` split right / down |
 | `lazyvim.toml` | `fe` explorer · `ff` find files · `fg` grep · `bd` delete buffer (Normal mode) |
 
 LazyVim chords need Neovim to put "nvim" in the window title. Add this to your Neovim config (e.g. `lua/config/options.lua`):
