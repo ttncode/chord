@@ -1,26 +1,31 @@
 # chord
 
-Keyboard chords for Windows: hold Caps Lock, hold Space, type a few letters, release Space, and the matching action runs in the app in front. Chords live in TOML files you edit.
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Platform: Windows](https://img.shields.io/badge/platform-Windows%2010%20%7C%2011-0078D6.svg)](#install)
+[![Release](https://img.shields.io/github/v/release/ttncode/chord?include_prereleases)](https://github.com/ttncode/chord/releases)
 
-While chord mode is on, a Spotlight-style panel near the top of the screen lists the chords for the app in front and narrows as you type. The look follows macOS: rounded corners, a soft shadow, Apple's system colours, keycaps for the keys, and short fade-in and fade-out animations. It follows Windows' light or dark mode, and the animations turn off when Windows' "Animation effects" setting is off. A tray icon offers "Open chords folder", "Start with Windows" and "Quit". Windows only for now.
+Keyboard chords for Windows. Hold **Caps Lock**, hold **Space**, type a few letters, release Space: the matching action runs in the app in front. Chords live in plain TOML files, per app.
 
-Inspired by [KeyChord/Chord](https://github.com/KeyChord/Chord) for macOS. This is an independent implementation; no code is shared.
+- **Shortcuts you don't have to remember:** a panel lists the chords for the app in front and narrows as you type.
+- **Mouse-free:** switch apps, snap windows, scroll, and click any button through Vimium-style labels.
+- **Small and fast:** one native Rust program, no runtime, no background service.
 
-## Run
+Inspired by [KeyChord/Chord](https://github.com/KeyChord/Chord) for macOS. This is an independent implementation; no code is shared. Early version (0.1): Windows only, tested on Windows 10 22H2.
 
-In PowerShell:
+## Install
 
-```powershell
-cd C:\workspace\chord
-cargo test            # logic tests, no keyboard needed
-cargo run --release   # uses the chords\ folder; or: cargo run --release -- --chords D:\my-chords
-```
+1. Download `chord-v0.1.0-windows-x64.zip` from [Releases](https://github.com/ttncode/chord/releases/latest).
+2. Unzip it anywhere, for example to `C:\Tools\chord`. It holds `chord.exe` and a `chords` folder with starter chords.
+3. Run `chord.exe`. A console window shows what each chord does; a ⌘ icon appears in the tray.
+4. Optional: tray icon → **Start with Windows**. chord then starts at login without a console window, using that `chords` folder.
 
 Quit with `Ctrl + Space + Esc`, the tray menu, or `Ctrl+C` in the console. Only one copy runs at a time.
 
-**Start with Windows:** tray icon → "Start with Windows". It starts with `--background` (no console window) and the chords folder you're using now.
+Windows may show a SmartScreen warning, because the program isn't signed: choose **More info → Run anyway**.
 
-Don't click inside the console while it runs: Windows pauses console output while text is selected (QuickEdit), and chords stop printing until you press Esc there.
+## Quick start
+
+Hold Caps Lock, then hold Space, type `/e`, release Space: a File Explorer window opens. Then try `;` in that window: blue labels appear on its buttons; type a label's letters and release Space to click it.
 
 Inside chord mode:
 
@@ -28,9 +33,11 @@ Inside chord mode:
 |---|---|
 | `Backspace` / `Shift+Backspace` | Delete the last letter / all letters |
 | `Esc` | Clear the letters |
-| `Caps Lock` | Run the typed chord and stay in chord mode; with nothing typed, run the last chord again (`du⇪⇪⇪` = up three folders) |
+| `Caps Lock` | Run the typed chord and stay in chord mode; with nothing typed, run the last chord again (`/mj⇪⇪` scrolls down three times) |
 | `Shift` + letter | Run the typed letters plus this letter, keep the typed letters (`t` then `Shift`+`t`,`s`,`p` runs `tt`, `ts`, `tp`) |
 | Ctrl / Alt / Win + key | Passed to the app as a normal shortcut |
+
+Caps Lock alone still toggles Caps Lock. Space alone still types a space.
 
 ## Chord files
 
@@ -96,9 +103,39 @@ To click several things in a row, keep Space held: tap `Caps Lock` (or hold `Shi
 - Electron apps (Antigravity, Postman, Slack) build their accessibility tree only when first asked, so chord reads twice when the first read is empty.
 - When a modal dialog is open, only its contents get labels.
 
-## Manual test checklist
+If a button gets no label, run chord with `--debug-hints`, press `;` there, and read `hints-debug.txt` (in the folder chord runs from): it lists every element Windows reported, with its type, position and name.
 
-Run these on the real machine; the automated tests can't press real keys.
+## Options
+
+| Option | Does |
+|---|---|
+| `--chords <folder>` | Load chord files from this folder (default: `chords` in the current folder) |
+| `--background` | No console window (used by Start with Windows) |
+| `--debug-hints` | Each label scan writes what Windows reported to `hints-debug.txt` |
+
+## Look
+
+The panel and labels follow macOS: rounded corners, a soft shadow, Apple's system colours, keycaps for the keys, short fade animations. They follow Windows' light or dark mode, and the animations turn off when Windows' "Animation effects" setting is off.
+
+## Known limits
+
+- Chords do nothing while an app running as administrator is in front, and nothing works on the lock screen or UAC prompts.
+- Custom-drawn apps and games may show few or no labels; Postman's ☰ menu and window buttons are among them.
+- In the console, don't select text while chord runs: Windows pauses console output (QuickEdit) until you press Esc there.
+
+## Build from source
+
+Needs [Rust](https://rustup.rs) 1.85 or newer on Windows. Without Visual Studio Build Tools, the GNU toolchain works: `rustup override set stable-x86_64-pc-windows-gnu` in the project folder.
+
+```powershell
+git clone https://github.com/ttncode/chord
+cd chord
+cargo test            # logic tests, no keyboard needed
+cargo run --release   # or: cargo run --release -- --chords D:\my-chords
+```
+
+<details>
+<summary>Manual test checklist (run on a real machine; the automated tests can't press real keys)</summary>
 
 Chords from files:
 - [ ] In Antigravity: `mf` opens the File menu, `fe` focuses the Explorer, `ts` hides/shows the sidebar, `ca` collapses all folders.
@@ -142,7 +179,7 @@ Normal typing:
 - [ ] Holding Space alone types spaces as usual.
 - [ ] `Ctrl + Space + Esc` always quits.
 
-Known limits: chords do nothing while an app running as administrator is in front, and nothing works on the lock screen or UAC prompts.
+</details>
 
 ## License
 
