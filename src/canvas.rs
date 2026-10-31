@@ -119,6 +119,10 @@ impl Canvas {
     }
 
     fn draw_text(&mut self, r: RECT, text: &str, font: HFONT, color: Rgb, flags: DRAW_TEXT_FORMAT) {
+        // An empty slice's pointer is dangling, and DrawTextW reads it anyway: access violation.
+        if text.is_empty() {
+            return;
+        }
         unsafe {
             let previous = SelectObject(self.dc, font);
             SetBkMode(self.dc, TRANSPARENT);
@@ -132,6 +136,9 @@ impl Canvas {
 
     /// Width in pixels of `text` in `font`.
     pub fn measure(&self, text: &str, font: HFONT) -> i32 {
+        if text.is_empty() {
+            return 0;
+        }
         unsafe {
             let previous = SelectObject(self.dc, font);
             let mut wide: Vec<u16> = text.encode_utf16().collect();
