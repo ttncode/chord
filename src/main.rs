@@ -17,6 +17,8 @@ mod machine;
 mod panel;
 #[cfg(windows)]
 mod win;
+#[cfg(windows)]
+mod window;
 
 struct Args {
     chords_dir: std::path::PathBuf,

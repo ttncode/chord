@@ -1,0 +1,111 @@
+//! Window focus and mouse actions.
+
+use std::time::Duration;
+
+use windows::Win32::Foundation::{BOOL, HWND, LPARAM};
+use windows::Win32::Graphics::Dwm::{DWMWA_CLOAKED, DwmGetWindowAttribute};
+use windows::Win32::UI::Input::KeyboardAndMouse::{
+    INPUT, INPUT_0, INPUT_MOUSE, MOUSE_EVENT_FLAGS, MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP,
+    MOUSEEVENTF_MIDDLEDOWN, MOUSEEVENTF_MIDDLEUP, MOUSEEVENTF_MOVE, MOUSEEVENTF_RIGHTDOWN,
+    MOUSEEVENTF_RIGHTUP, MOUSEEVENTF_WHEEL, MOUSEINPUT, SendInput,
+};
+use windows::Win32::UI::WindowsAndMessaging::{
+    EnumWindows, GW_OWNER, GetForegroundWindow, GetWindow, GetWindowTextLengthW, IsIconic,
+    IsWindowVisible, SW_RESTORE, SetForegroundWindow, ShowWindow,
+};
+
+use crate::config::Mouse;
+
+const WHEEL_STEP: i32 = 120;
+
+/// Brings `exe`'s window to the front, or its next window when one is already in front.
+/// Returns false when the app has no window.
+pub fn focus_app(exe: &str, exe_of: impl Fn(HWND) -> Option<String>) -> bool {
+    let windows: Vec<HWND> = app_windows().into_iter().filter(|&h| exe_of(h).as_deref() == Some(exe)).collect();
+    let Some(&first) = windows.first() else { return false };
+    let current = unsafe { GetForegroundWindow() };
+    // Windows are listed front to back, so the one after the current one is the next to cycle to.
+    let target = match windows.iter().position(|&h| h == current) {
+        Some(i) => windows[(i + 1) % windows.len()],
+        None => first,
+    };
+    bring_to_front(target);
+    true
+}
+
+/// Top-level windows a user would switch to with Alt+Tab, front to back.
+fn app_windows() -> Vec<HWND> {
+    unsafe extern "system" fn collect(hwnd: HWND, list: LPARAM) -> BOOL {
+        let list = unsafe { &mut *(list.0 as *mut Vec<HWND>) };
+        if is_switchable(hwnd) {
+            list.push(hwnd);
+        }
+        true.into()
+    }
+    let mut list: Vec<HWND> = Vec::new();
+    unsafe {
+        let _ = EnumWindows(Some(collect), LPARAM(&mut list as *mut _ as isize));
+    }
+    list
+}
+
+fn is_switchable(hwnd: HWND) -> bool {
+    unsafe {
+        if !IsWindowVisible(hwnd).as_bool() || GetWindowTextLengthW(hwnd) == 0 {
+            return false;
+        }
+        if GetWindow(hwnd, GW_OWNER).is_ok_and(|owner| !owner.is_invalid()) {
+            return false;
+        }
+        // UWP and other-desktop windows stay "visible" while cloaked.
+        let mut cloaked = 0u32;
+        let _ = DwmGetWindowAttribute(hwnd, DWMWA_CLOAKED, &mut cloaked as *mut _ as *mut _, size_of::<u32>() as u32);
+        cloaked == 0
+    }
+}
+
+/// SetForegroundWindow is refused unless we "own" the last input, so send an empty mouse event first
+/// (komorebi and GlazeWM do the same), then verify and retry.
+fn bring_to_front(hwnd: HWND) {
+    unsafe {
+        if IsIconic(hwnd).as_bool() {
+            let _ = ShowWindow(hwnd, SW_RESTORE);
+        }
+        for _ in 0..5 {
+            send_mouse(&[MOUSEEVENTF_MOVE], 0);
+            let _ = SetForegroundWindow(hwnd);
+            if GetForegroundWindow() == hwnd {
+                return;
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
+    }
+}
+
+pub fn mouse(action: Mouse) {
+    match action {
+        Mouse::Click => send_mouse(&[MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP], 0),
+        Mouse::RightClick => send_mouse(&[MOUSEEVENTF_RIGHTDOWN, MOUSEEVENTF_RIGHTUP], 0),
+        Mouse::MiddleClick => send_mouse(&[MOUSEEVENTF_MIDDLEDOWN, MOUSEEVENTF_MIDDLEUP], 0),
+        Mouse::DoubleClick => send_mouse(
+            &[MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP, MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP],
+            0,
+        ),
+        Mouse::ScrollUp => send_mouse(&[MOUSEEVENTF_WHEEL], 3 * WHEEL_STEP),
+        Mouse::ScrollDown => send_mouse(&[MOUSEEVENTF_WHEEL], -3 * WHEEL_STEP),
+    }
+}
+
+/// One SendInput call with these mouse events at the current pointer position.
+pub fn send_mouse(events: &[MOUSE_EVENT_FLAGS], wheel: i32) {
+    let inputs: Vec<INPUT> = events
+        .iter()
+        .map(|&flags| INPUT {
+            r#type: INPUT_MOUSE,
+            Anonymous: INPUT_0 {
+                mi: MOUSEINPUT { dx: 0, dy: 0, mouseData: wheel as u32, dwFlags: flags, time: 0, dwExtraInfo: 0 },
+            },
+        })
+        .collect();
+    unsafe { SendInput(&inputs, size_of::<INPUT>() as i32) };
+}

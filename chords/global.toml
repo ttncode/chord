@@ -16,6 +16,13 @@ name = "Global"
 "/dn" = { name = "Desktop: new", shortcut = "win+ctrl+d" }
 "/dx" = { name = "Desktop: close", shortcut = "win+ctrl+f4" }
 
-# Apps
-"/a" = { name = "Open Antigravity", shell = 'start "" "%LOCALAPPDATA%\Programs\Antigravity IDE\Antigravity IDE.exe"' }
-"/t" = { name = "Open Windows Terminal", shell = "wt" }
+# Apps: switch to the app (its next window if it's already in front), start it if it isn't running
+"/a" = { name = "Antigravity", focus = "antigravity ide.exe", launch = 'start "" "%LOCALAPPDATA%\Programs\Antigravity IDE\Antigravity IDE.exe"' }
+"/t" = { name = "Windows Terminal", focus = "windowsterminal.exe", launch = "wt" }
+
+# Mouse at the pointer
+"/mc" = { name = "Mouse: click", mouse = "click" }
+"/mr" = { name = "Mouse: right-click", mouse = "right-click" }
+"/md" = { name = "Mouse: double-click", mouse = "double-click" }
+"/mj" = { name = "Mouse: scroll down", mouse = "scroll-down" }
+"/mk" = { name = "Mouse: scroll up", mouse = "scroll-up" }

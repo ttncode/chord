@@ -36,6 +36,7 @@ use windows::core::{PWSTR, w};
 
 use crate::config::{self, Action};
 use crate::panel;
+use crate::window;
 use crate::keys::{Key, parse_shortcut};
 use crate::machine::{Effect, Machine, VK_CAPITAL, VK_SPACE};
 
@@ -210,15 +211,26 @@ fn run_action(action: &Action) {
             std::thread::sleep(Duration::from_millis(50));
             send_combo(&shortcut("enter"));
         }
-        Action::Shell(command) => {
-            let spawned = std::process::Command::new("cmd")
-                .raw_arg(config::cmd_line(command))
-                .creation_flags(CREATE_NO_WINDOW)
-                .spawn();
-            if let Err(e) = spawned {
-                say!("  ! could not run `{command}`: {e}");
+        Action::Shell(command) => run_shell(command),
+        Action::Focus { exe, launch } => {
+            if !window::focus_app(exe, exe_of) {
+                match launch {
+                    Some(command) => run_shell(command),
+                    None => say!("  ! {exe} has no open window"),
+                }
             }
         }
+        Action::Mouse(action) => window::mouse(*action),
+    }
+}
+
+fn run_shell(command: &str) {
+    let spawned = std::process::Command::new("cmd")
+        .raw_arg(config::cmd_line(command))
+        .creation_flags(CREATE_NO_WINDOW)
+        .spawn();
+    if let Err(e) = spawned {
+        say!("  ! could not run `{command}`: {e}");
     }
 }
 

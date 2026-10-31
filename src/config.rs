@@ -10,6 +10,19 @@ pub enum Action {
     Shortcut(Vec<Combo>),
     Shell(String),
     Palette(String),
+    /// Bring the app's window to the front (next window if it's already in front); `launch` runs if it isn't open.
+    Focus { exe: String, launch: Option<String> },
+    Mouse(Mouse),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Mouse {
+    Click,
+    RightClick,
+    DoubleClick,
+    MiddleClick,
+    ScrollUp,
+    ScrollDown,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -222,6 +235,7 @@ fn parse_chord(key: &str, value: &toml::Value) -> Result<(Chord, Option<regex::R
     };
     let mut name = None;
     let mut actions = Vec::new();
+    let mut launch = None;
     for (field, value) in fields {
         let toml::Value::String(s) = value else {
             return Err(format!("'{field}' must be a string"));
@@ -231,13 +245,32 @@ fn parse_chord(key: &str, value: &toml::Value) -> Result<(Chord, Option<regex::R
             "shortcut" => actions.push(Action::Shortcut(parse_shortcut(s)?)),
             "shell" => actions.push(Action::Shell(s.clone())),
             "palette" => actions.push(Action::Palette(s.clone())),
+            "focus" => actions.push(Action::Focus { exe: s.to_lowercase(), launch: None }),
+            "launch" => launch = Some(s.clone()),
+            "mouse" => actions.push(Action::Mouse(match s.as_str() {
+                "click" => Mouse::Click,
+                "right-click" => Mouse::RightClick,
+                "double-click" => Mouse::DoubleClick,
+                "middle-click" => Mouse::MiddleClick,
+                "scroll-up" => Mouse::ScrollUp,
+                "scroll-down" => Mouse::ScrollDown,
+                other => return Err(format!(
+                    "mouse \"{other}\" must be click, right-click, double-click, middle-click, scroll-up or scroll-down"
+                )),
+            })),
             other => return Err(format!("unknown field '{other}'")),
         }
     }
     let name = name.ok_or("missing 'name'")?;
+    if let Some(command) = launch {
+        match actions.as_mut_slice() {
+            [Action::Focus { launch, .. }] => *launch = Some(command),
+            _ => return Err("'launch' only goes together with 'focus'".into()),
+        }
+    }
     match <[Action; 1]>::try_from(actions) {
         Ok([action]) => Ok((Chord { name, action }, pattern)),
-        Err(_) => Err("needs exactly one of 'shortcut', 'shell', 'palette'".into()),
+        Err(_) => Err("needs exactly one of 'shortcut', 'shell', 'palette', 'focus', 'mouse'".into()),
     }
 }
 
@@ -438,6 +471,30 @@ mod tests {
         let (_, errors) = parse_file(
             "g.toml",
             "name = \"G\"\n[chords]\n'/g(\\d+' = { name = \"x\", shell = \"x\" }\n'Q(a)' = { name = \"x\", shell = \"x\" }\n",
+        );
+        assert_eq!(errors.len(), 2, "{errors:?}");
+    }
+
+    #[test]
+    fn focus_and_mouse_actions_parse() {
+        let f = global(
+            r#""/a" = { name = "A", focus = "Antigravity IDE.exe", launch = "start x" }
+"/b" = { name = "B", focus = "wt.exe" }
+"/c" = { name = "C", mouse = "double-click" }"#,
+        );
+        assert_eq!(
+            f.chords["/a"].action,
+            Action::Focus { exe: "antigravity ide.exe".into(), launch: Some("start x".into()) }
+        );
+        assert_eq!(f.chords["/b"].action, Action::Focus { exe: "wt.exe".into(), launch: None });
+        assert_eq!(f.chords["/c"].action, Action::Mouse(Mouse::DoubleClick));
+    }
+
+    #[test]
+    fn launch_without_focus_and_unknown_mouse_are_errors() {
+        let (_, errors) = parse_file(
+            "g.toml",
+            "name = \"G\"\n[chords]\n\"/a\" = { name = \"x\", shell = \"x\", launch = \"y\" }\n\"/b\" = { name = \"x\", mouse = \"tickle\" }\n",
         );
         assert_eq!(errors.len(), 2, "{errors:?}");
     }
