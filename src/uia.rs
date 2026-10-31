@@ -126,13 +126,19 @@ pub fn clickable_rects(hwnd: HWND) -> Result<Vec<(Rect, bool)>> {
         };
 
         // An open modal (a web dialog, or one an app draws inside its window): only its contents count.
-        // Closed ones can linger in the tree empty, so a dialog wins only when something in it is clickable.
+        // The one on top holds the keyboard focus (modals trap it); after it, later in the tree is
+        // usually higher. Closed ones can linger in the tree empty, so a dialog wins only when
+        // something in it is clickable.
         let open_dialog = uia.CreateAndCondition(&is(UIA_IsDialogPropertyId, true)?, &is(UIA_IsOffscreenPropertyId, false)?)?;
-        let dialogs = root.FindAll(TreeScope_Descendants, &open_dialog)?;
-        // The last one in the tree is the one on top.
+        let found_dialogs = root.FindAll(TreeScope_Descendants, &open_dialog)?;
+        let mut dialogs: Vec<IUIAutomationElement> =
+            (0..found_dialogs.Length()?).rev().filter_map(|i| found_dialogs.GetElement(i).ok()).collect();
+        if let Some(focused) = focused_dialog(&uia) {
+            dialogs.insert(0, focused);
+        }
         let mut result = None;
-        for i in (0..dialogs.Length()?).rev() {
-            let rects = rects_in(&dialogs.GetElement(i)?)?;
+        for dialog in &dialogs {
+            let rects = rects_in(dialog)?;
             if !rects.is_empty() {
                 result = Some(rects);
                 break;
@@ -143,10 +149,67 @@ pub fn clickable_rects(hwnd: HWND) -> Result<Vec<(Rect, bool)>> {
             None => rects_in(&root)?,
         };
         if debug {
+            log += &format!("\n{} dialog(s) open\n\nEVERY ELEMENT (offscreen, enabled, focusable, invokable):\n", dialogs.len());
+            log += &every_element(&uia, &root).unwrap_or_else(|e| format!("could not list: {e}\n"));
             let _ = std::fs::write("hints-debug.txt", log);
             say!("  (debug: wrote hints-debug.txt)");
         }
         Ok(result)
+    }
+}
+
+/// The dialog holding the keyboard focus, if any: walks up from the focused element.
+fn focused_dialog(uia: &IUIAutomation) -> Option<IUIAutomationElement> {
+    unsafe {
+        let walker = uia.RawViewWalker().ok()?;
+        let mut element = uia.GetFocusedElement().ok()?;
+        for _ in 0..64 {
+            let is_dialog = element.GetCurrentPropertyValue(UIA_IsDialogPropertyId).ok();
+            if is_dialog.is_some_and(|v| bool::try_from(&v).unwrap_or(false)) {
+                return Some(element);
+            }
+            element = walker.GetParentElement(&element).ok()?;
+        }
+        None
+    }
+}
+
+/// Debug dump of every element under `root`, clickable or not, to see why a button got no label.
+fn every_element(uia: &IUIAutomation, root: &IUIAutomationElement) -> Result<String> {
+    unsafe {
+        let cache = uia.CreateCacheRequest()?;
+        for id in [
+            UIA_BoundingRectanglePropertyId,
+            UIA_ControlTypePropertyId,
+            UIA_NamePropertyId,
+            UIA_IsOffscreenPropertyId,
+            UIA_IsEnabledPropertyId,
+            UIA_IsKeyboardFocusablePropertyId,
+            UIA_IsInvokePatternAvailablePropertyId,
+        ] {
+            cache.AddProperty(id)?;
+        }
+        cache.SetAutomationElementMode(AutomationElementMode_None)?;
+        let all = root.FindAllBuildCache(TreeScope_Descendants, &uia.CreateTrueCondition()?, &cache)?;
+        let flag = |e: &IUIAutomationElement, id| {
+            e.GetCachedPropertyValue(id).ok().and_then(|v| bool::try_from(&v).ok()).map_or('?', |b| if b { 'y' } else { '-' })
+        };
+        let mut out = String::new();
+        for i in 0..all.Length()? {
+            let Ok(e) = all.GetElement(i) else { continue };
+            let r = e.CachedBoundingRectangle().unwrap_or_default();
+            out += &format!(
+                "type {:5}  {}{}{}{}  {:?}  {:?}\n",
+                e.CachedControlType().unwrap_or_default().0,
+                flag(&e, UIA_IsOffscreenPropertyId),
+                flag(&e, UIA_IsEnabledPropertyId),
+                flag(&e, UIA_IsKeyboardFocusablePropertyId),
+                flag(&e, UIA_IsInvokePatternAvailablePropertyId),
+                (r.left, r.top, r.right, r.bottom),
+                e.CachedName().map(|n| n.to_string()).unwrap_or_default(),
+            );
+        }
+        Ok(out)
     }
 }
 
