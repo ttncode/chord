@@ -150,6 +150,16 @@ pub fn available(files: &[ChordFile], exe: &str, title: &str) -> Vec<(String, St
         .collect()
 }
 
+/// The hint chord a chord starts with (`;` in `;aj`): its length and click kind. The rest is a label.
+pub fn hint_prefix(files: &[ChordFile], exe: &str, title: &str, chord: &str) -> Option<(usize, Mouse)> {
+    chord.char_indices().map(|(i, c)| i + c.len_utf8()).find_map(|end| {
+        match resolve(files, exe, title, &chord[..end])?.chord.action {
+            Action::Hints(kind) => Some((end, kind)),
+            _ => None,
+        }
+    })
+}
+
 /// Every `*.toml` directly in `dir`, sorted by file name. A missing directory is an error, not a panic.
 pub fn load_dir(dir: &std::path::Path) -> (Vec<ChordFile>, Vec<String>) {
     let entries = match std::fs::read_dir(dir) {
@@ -511,6 +521,21 @@ mod tests {
     fn hints_action_parses() {
         let f = global(r#"";" = { name = "Click", hints = "click" }"#);
         assert_eq!(f.chords[";"].action, Action::Hints(Mouse::Click));
+    }
+
+    #[test]
+    fn hint_prefix_finds_the_hint_chord_at_the_start() {
+        let files = vec![global(
+            r#"";" = { name = "Click", hints = "click" }
+"'" = { name = "Right", hints = "right-click" }
+"/e" = { name = "Explorer", shortcut = "win+e" }"#,
+        )];
+        let find = |chord| hint_prefix(&files, "x.exe", "", chord);
+        assert_eq!(find(";"), Some((1, Mouse::Click)));
+        assert_eq!(find(";aj"), Some((1, Mouse::Click)));
+        assert_eq!(find("'s"), Some((1, Mouse::RightClick)));
+        assert_eq!(find("/e"), None);
+        assert_eq!(find(""), None);
     }
 
     #[test]

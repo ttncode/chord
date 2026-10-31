@@ -89,6 +89,8 @@ vim.opt.title = true
 
 Type `;` in chord mode (keep Space held): blue labels appear on the buttons, links, tabs and fields of the window in front. Type a label's letters (the list narrows as you type), release Space, and that element is clicked. `Backspace` past the `;` hides the labels.
 
+To click several things in a row, keep Space held: tap `Caps Lock` (or hold `Shift` on the label's last letter) to click and get fresh labels at once. A `Caps Lock` tap with nothing typed brings the labels back after a pick.
+
 - Works through Windows UI Automation, so it covers most apps (Explorer, Settings, Antigravity, Chrome, Office). Custom-drawn apps and games may show few or no labels.
 - In Chrome, Vimium's `f` is faster and more complete for web pages.
 - The first `;` in an Electron app (Antigravity, Slack) can come back empty while the app builds its accessibility tree; try again.
@@ -122,6 +124,7 @@ Windows and mouse:
 Hints:
 - [ ] `;` in File Explorer shows labels on its buttons; typing one and releasing Space clicks it.
 - [ ] Labels sit on the right elements at 125%/150% display scaling.
+- [ ] `;` + label + `Caps Lock` clicks it and shows fresh labels; another `Caps Lock` with nothing typed shows labels again.
 
 Robustness:
 - [ ] After Win+L and unlocking, and after sleep, chords still work without restarting.

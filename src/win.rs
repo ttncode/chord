@@ -75,9 +75,8 @@ pub fn detach_console() {
     }
 }
 
-/// One chord-mode session: the window it started in and the chords usable there, read once.
+/// One chord-mode session: the app it started in and the chords usable there, read once.
 struct Session {
-    hwnd: HWND,
     app: String,
     title: String,
     files: Vec<config::ChordFile>,
@@ -86,10 +85,9 @@ struct Session {
 
 impl Session {
     fn start(dir: &Path) -> Self {
-        let hwnd = unsafe { GetForegroundWindow() };
         let (exe, title) = foreground();
         let (files, _) = config::load_dir(dir);
-        Self { hwnd, chords: config::available(&files, &exe, &title), files, app: exe, title }
+        Self { chords: config::available(&files, &exe, &title), files, app: exe, title }
     }
 
     fn view(&self, buffer: &str) -> panel::View {
@@ -101,12 +99,9 @@ impl Session {
         panel::View { app: self.app.clone(), typed: buffer.to_string(), rows: matching.cloned().collect() }
     }
 
-    /// The click kind when `buffer` is exactly a `hints` chord here.
-    fn hints_kind(&self, buffer: &str) -> Option<Mouse> {
-        match config::resolve(&self.files, &self.app, &self.title, buffer)?.chord.action {
-            Action::Hints(kind) => Some(kind),
-            _ => None,
-        }
+    /// Length of the hint chord `chord` starts with (`;` in `;aj`), and its click kind.
+    fn hint_prefix(&self, chord: &str) -> Option<(usize, Mouse)> {
+        config::hint_prefix(&self.files, &self.app, &self.title, chord)
     }
 }
 
@@ -127,6 +122,10 @@ impl Hints {
                 return None;
             }
         };
+        if rects.is_empty() {
+            say!("  -> no clickable elements found");
+            return None;
+        }
         let mut area = RECT::default();
         unsafe {
             let _ = GetWindowRect(hwnd, &mut area);
@@ -207,16 +206,13 @@ pub fn run(chords_dir: PathBuf) {
                     }
                 }
                 let Some(s) = &session else { continue };
-                let kind = s.hints_kind(&buffer);
-                if kind.is_some() {
-                    panel::hide_now();
-                }
-                match kind.and_then(|kind| Hints::scan(s.hwnd, &buffer, kind)) {
-                    Some(h) => {
-                        h.show("");
-                        hints = Some(h);
-                    }
-                    None => panel::show(s.view(&buffer)),
+                // Exactly a hint chord: show its labels.
+                hints = match s.hint_prefix(&buffer) {
+                    Some((len, kind)) if len == buffer.len() => open_hints(&buffer, "", kind),
+                    _ => None,
+                };
+                if hints.is_none() {
+                    panel::show(s.view(&buffer));
                 }
             }
             Effect::FireKeep(chord) => {
@@ -224,11 +220,25 @@ pub fn run(chords_dir: PathBuf) {
                 if chord.as_str() == buffer {
                     buffer.clear();
                 }
-                if !click_hint(&mut hints, chord.as_str()) {
-                    fire(&chords_dir, chord.as_str());
-                }
-                if let Some(s) = &session {
-                    panel::show(s.view(&buffer));
+                let Some(s) = &session else { continue };
+                match s.hint_prefix(chord.as_str()) {
+                    // Caps repeat or Shift on a hint chord or a label pick: click the label if labels
+                    // are up, then show fresh labels for the next pick (the click may change the window).
+                    Some((_, kind)) => {
+                        if click_hint(&mut hints, chord.as_str()) {
+                            std::thread::sleep(Duration::from_millis(150));
+                        }
+                        let key = s.hint_prefix(&buffer).map_or(0, |(len, _)| len);
+                        hints = open_hints(&buffer[..key], &buffer[key..], kind);
+                        if hints.is_none() {
+                            panel::show(s.view(&buffer));
+                        }
+                    }
+                    None => {
+                        end_hints(&mut hints);
+                        fire(&chords_dir, chord.as_str());
+                        panel::show(s.view(&buffer));
+                    }
                 }
                 show(&buffer);
             }
@@ -239,8 +249,13 @@ pub fn run(chords_dir: PathBuf) {
             }
             Effect::Fire(chord) => {
                 panel::hide();
+                let hint_chord = session.as_ref().is_some_and(|s| s.hint_prefix(chord.as_str()).is_some());
                 if !click_hint(&mut hints, chord.as_str()) {
-                    fire(&chords_dir, chord.as_str());
+                    if hint_chord {
+                        say!("  -> no labels on screen to pick from");
+                    } else {
+                        fire(&chords_dir, chord.as_str());
+                    }
                 }
             }
             Effect::ToggleCaps => send_combo(&CAPS),
@@ -252,6 +267,14 @@ pub fn run(chords_dir: PathBuf) {
             }
         }
     }
+}
+
+/// Hides the panel, then labels the window in front; `key` is the typed part before the label.
+fn open_hints(key: &str, typed: &str, kind: Mouse) -> Option<Hints> {
+    panel::hide_now();
+    let hints = Hints::scan(unsafe { GetForegroundWindow() }, key, kind)?;
+    hints.show(typed);
+    Some(hints)
 }
 
 fn end_hints(hints: &mut Option<Hints>) {
@@ -330,8 +353,8 @@ fn run_action(action: &Action) {
             }
         }
         Action::Mouse(action) => window::mouse(*action),
-        // Hint chords are handled while typing (see `run`); reaching here means hints found nothing to show.
-        Action::Hints(_) => say!("  -> no clickable elements found"),
+        // Hint chords never get here: `run` handles them while typing.
+        Action::Hints(_) => {}
     }
 }
 
