@@ -6,6 +6,10 @@ pub const ALPHABET: &str = "sadfjklewcmpgh";
 /// Screen rectangle: left, top, right, bottom.
 pub type Rect = (i32, i32, i32, i32);
 
+/// More labels than this are unreadable; mousemaster caps similarly. Counted after filtering, since
+/// big web apps report thousands of covered or scrolled-away elements first.
+const MAX_LABELS: usize = 300;
+
 /// Element rectangles closer than this (pixels) on every edge are the same target.
 const SAME: i32 = 6;
 
@@ -25,6 +29,7 @@ pub fn targets(rects: Vec<Rect>) -> Vec<Rect> {
         }
     }
     kept.sort_by_key(|r| (r.1, r.0));
+    kept.truncate(MAX_LABELS);
     kept
 }
 
@@ -95,6 +100,13 @@ mod tests {
     fn targets_are_sorted_top_left_first() {
         let (a, b, c) = ((300, 10, 340, 30), (10, 10, 50, 30), (10, 50, 50, 70));
         assert_eq!(targets(vec![c, a, b]), vec![b, a, c]);
+    }
+
+    #[test]
+    fn the_cap_applies_after_filtering() {
+        // 400 nested pairs: 800 rectangles in, 400 targets, 300 labels.
+        let rects = (0..400).flat_map(|i| [(0, i * 30, 100, i * 30 + 20), (10, i * 30 + 2, 50, i * 30 + 18)]).collect();
+        assert_eq!(targets(rects).len(), MAX_LABELS);
     }
 
     #[test]

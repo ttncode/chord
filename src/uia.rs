@@ -19,9 +19,6 @@ use windows::core::{Result, VARIANT};
 
 use crate::hints::Rect;
 
-/// More labels than this are unreadable; mousemaster caps similarly.
-const MAX_ELEMENTS: i32 = 300;
-
 /// Rectangles (physical screen pixels) of clickable elements in `hwnd` that no other window covers.
 pub fn clickable_rects(hwnd: HWND) -> Result<Vec<Rect>> {
     unsafe {
@@ -85,7 +82,7 @@ pub fn clickable_rects(hwnd: HWND) -> Result<Vec<Rect>> {
         let found = scope.FindAllBuildCache(TreeScope_Descendants, &condition, &cache)?;
         let target_root = GetAncestor(hwnd, GA_ROOT);
         let mut rects: Vec<Rect> = Vec::new();
-        for i in 0..found.Length()?.min(MAX_ELEMENTS) {
+        for i in 0..found.Length()? {
             let Ok(rect) = found.GetElement(i).and_then(|e| e.CachedBoundingRectangle()) else { continue };
             // Covered by another window (menus, overlays, other apps): not clickable here.
             if let Some(center) = center(rect) {
