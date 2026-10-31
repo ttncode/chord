@@ -86,7 +86,11 @@ impl Session {
 
     fn lines(&self, buffer: &str) -> Vec<String> {
         let header = format!("{}   > {buffer}", self.app);
-        let matching = self.chords.iter().filter(|(chord, _)| chord.starts_with(buffer));
+        let matching = self.chords.iter().filter(|(chord, _)| match chord.split_once('(') {
+            // Pattern chords: compare only the literal part before the first `(`.
+            Some((prefix, _)) => prefix.starts_with(buffer) || buffer.starts_with(prefix),
+            None => chord.starts_with(buffer),
+        });
         std::iter::once(header).chain(matching.map(|(chord, name)| format!("{chord:<6} {name}"))).collect()
     }
 }
@@ -100,26 +104,40 @@ pub fn run(chords_dir: PathBuf) {
     say!("chord running. Chord files: {}", chords_dir.display());
     let (files, errors) = config::load_dir(&chords_dir);
     for f in &files {
-        say!("  loaded {} ({} chords)", f.file, f.chords.len());
+        say!("  loaded {} \"{}\" ({} chords)", f.file, f.name, f.chords.len());
     }
     print_errors(&errors);
     say!("  Hold Caps Lock, then hold Space, type a chord, release Space.");
     say!("  Emergency exit: Ctrl + Space + Esc (or Ctrl+C here).");
 
     let mut session = None;
+    let mut buffer = String::new();
     for effect in rx {
         match effect {
             Effect::Enter => {
+                buffer.clear();
                 let s = Session::start(&chords_dir);
                 panel::show(s.lines(""));
                 session = Some(s);
                 show("");
             }
             Effect::Show(chord) => {
+                buffer = chord.as_str().to_string();
                 if let Some(s) = &session {
-                    panel::show(s.lines(chord.as_str()));
+                    panel::show(s.lines(&buffer));
                 }
-                show(chord.as_str());
+                show(&buffer);
+            }
+            Effect::FireKeep(chord) => {
+                // A Caps tap ran (and cleared) the typed letters; Shift + letter keeps them.
+                if chord.as_str() == buffer {
+                    buffer.clear();
+                }
+                fire(&chords_dir, chord.as_str());
+                if let Some(s) = &session {
+                    panel::show(s.lines(&buffer));
+                }
+                show(&buffer);
             }
             Effect::Cancel => {
                 panel::hide();

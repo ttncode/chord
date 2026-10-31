@@ -54,6 +54,8 @@ pub enum Effect {
     Enter,
     Show(Chord),
     Fire(Chord),
+    /// Run this chord but stay in chord mode (Caps tap, or Shift + last letter).
+    FireKeep(Chord),
     Cancel,
     Quit,
 }
@@ -77,6 +79,8 @@ pub struct Machine {
     space_held: bool,
     chord_mode: bool,
     buffer: Chord,
+    /// Last chord run with Caps or Shift, repeated by a Caps tap on an empty buffer.
+    last: Chord,
     last_space_ms: u32,
     last_caps_ms: u32,
 }
@@ -95,6 +99,7 @@ impl Machine {
             space_held: false,
             chord_mode: false,
             buffer: Chord::new(),
+            last: Chord::new(),
             last_space_ms: 0,
             last_caps_ms: 0,
         }
@@ -169,10 +174,19 @@ impl Machine {
             VK_CAPITAL => {
                 self.caps_held = true;
                 // Auto-repeat must not reset it: a chord earlier in this same hold still counts.
-                if !self.blocked[i] {
-                    self.caps_used = self.chord_mode;
+                if self.blocked[i] {
+                    return self.block(i, None);
                 }
-                return self.block(i, None);
+                self.caps_used = self.chord_mode;
+                if !self.chord_mode {
+                    return self.block(i, None);
+                }
+                if self.buffer.len > 0 {
+                    self.last = self.buffer;
+                    self.buffer = Chord::new();
+                }
+                let effect = (self.last.len > 0).then_some(Effect::FireKeep(self.last));
+                return self.block(i, effect);
             }
             VK_ESCAPE if self.ctrl_held() && self.space_held => {
                 return self.block(i, Some(Effect::Quit));
@@ -188,7 +202,7 @@ impl Machine {
         }
         match vk {
             VK_BACK => {
-                self.buffer.len = self.buffer.len.saturating_sub(1);
+                self.buffer.len = if self.shift_held() { 0 } else { self.buffer.len.saturating_sub(1) };
                 self.block(i, Some(Effect::Show(self.buffer)))
             }
             VK_ESCAPE => {
@@ -196,6 +210,13 @@ impl Machine {
                 self.block(i, Some(Effect::Show(self.buffer)))
             }
             _ => match char_of(vk) {
+                Some(c) if self.shift_held() && self.buffer.len < CHORD_CAP => {
+                    let mut fired = self.buffer;
+                    fired.bytes[fired.len] = c;
+                    fired.len += 1;
+                    self.last = fired;
+                    self.block(i, Some(Effect::FireKeep(fired)))
+                }
                 Some(c) if self.buffer.len < CHORD_CAP => {
                     self.buffer.bytes[self.buffer.len] = c;
                     self.buffer.len += 1;
@@ -233,6 +254,10 @@ impl Machine {
     fn block(&mut self, i: usize, effect: Option<Effect>) -> Decision {
         self.blocked[i] = true;
         Decision { block: true, effect }
+    }
+
+    fn shift_held(&self) -> bool {
+        self.modifiers[0xA0] || self.modifiers[0xA1]
     }
 
     fn ctrl_held(&self) -> bool {
@@ -498,6 +523,74 @@ mod tests {
         m.reset();
         assert_eq!(press(&mut m, D), pass());
         assert_eq!(release(&mut m, G), pass());
+    }
+
+    /// Chord mode with Caps already released (only Space held).
+    fn space_only_chord_mode() -> Machine {
+        let mut m = in_chord_mode();
+        release(&mut m, VK_CAPITAL);
+        m
+    }
+
+    #[test]
+    fn caps_in_chord_mode_fires_and_clears() {
+        let mut m = space_only_chord_mode();
+        press(&mut m, G);
+        release(&mut m, G);
+        press(&mut m, D);
+        release(&mut m, D);
+        assert_eq!(press(&mut m, VK_CAPITAL), block_with(Effect::FireKeep(chord("gd"))));
+        release(&mut m, VK_CAPITAL);
+        assert_eq!(press(&mut m, G), block_with(Effect::Show(chord("g"))));
+    }
+
+    #[test]
+    fn caps_with_empty_buffer_repeats_last_chord() {
+        let mut m = space_only_chord_mode();
+        press(&mut m, G);
+        press(&mut m, D);
+        press(&mut m, VK_CAPITAL);
+        release(&mut m, VK_CAPITAL);
+        assert_eq!(press(&mut m, VK_CAPITAL), block_with(Effect::FireKeep(chord("gd"))));
+    }
+
+    #[test]
+    fn caps_repeat_while_held_does_not_fire_again() {
+        let mut m = space_only_chord_mode();
+        press(&mut m, G);
+        press(&mut m, VK_CAPITAL);
+        assert_eq!(press(&mut m, VK_CAPITAL), block());
+    }
+
+    #[test]
+    fn space_release_after_caps_fire_does_not_fire_again() {
+        let mut m = space_only_chord_mode();
+        press(&mut m, G);
+        press(&mut m, VK_CAPITAL);
+        release(&mut m, VK_CAPITAL);
+        assert_eq!(release(&mut m, VK_SPACE), block_with(Effect::Cancel));
+    }
+
+    #[test]
+    fn shift_letter_fires_buffer_plus_letter_and_keeps_buffer() {
+        let mut m = space_only_chord_mode();
+        press(&mut m, 0x54); // t
+        release(&mut m, 0x54);
+        assert_eq!(press(&mut m, 0xA0), pass()); // left shift
+        assert_eq!(press(&mut m, 0x54), block_with(Effect::FireKeep(chord("tt"))));
+        release(&mut m, 0x54);
+        assert_eq!(press(&mut m, 0x53), block_with(Effect::FireKeep(chord("ts")))); // s
+        release(&mut m, 0xA0);
+        assert_eq!(press(&mut m, 0x50), block_with(Effect::Show(chord("tp")))); // p
+    }
+
+    #[test]
+    fn shift_backspace_clears_the_buffer() {
+        let mut m = space_only_chord_mode();
+        press(&mut m, G);
+        press(&mut m, D);
+        press(&mut m, 0xA1); // right shift
+        assert_eq!(press(&mut m, VK_BACK), block_with(Effect::Show(chord(""))));
     }
 
     #[test]

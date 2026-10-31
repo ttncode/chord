@@ -18,7 +18,7 @@ pub struct Chord {
     pub action: Action,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct ChordFile {
     pub file: String,
     pub name: String,
@@ -27,6 +27,8 @@ pub struct ChordFile {
     /// Lowercase substring the window title must contain.
     pub title: Option<String>,
     pub chords: BTreeMap<String, Chord>,
+    /// Chords whose key has `( … )` regex parts, compiled; the chord itself is in `chords` under the same key.
+    pub patterns: Vec<(String, regex::Regex)>,
 }
 
 /// `None` only when the TOML itself can't be parsed. Every error starts with `"{file}: "`.
@@ -62,12 +64,14 @@ pub fn parse_file(file: &str, text: &str) -> (Option<ChordFile>, Vec<String>) {
     let title = string("title", &mut err).map(|s| s.to_lowercase());
 
     let mut chords = BTreeMap::new();
+    let mut patterns = Vec::new();
     match table.get("chords") {
         Some(toml::Value::Table(entries)) => {
             for (key, value) in entries {
                 match parse_chord(key, value) {
-                    Ok(chord) => {
+                    Ok((chord, pattern)) => {
                         chords.insert(key.clone(), chord);
+                        patterns.extend(pattern.map(|p| (key.clone(), p)));
                     }
                     Err(msg) => err(format!("chord '{key}': {msg}")),
                 }
@@ -77,12 +81,13 @@ pub fn parse_file(file: &str, text: &str) -> (Option<ChordFile>, Vec<String>) {
         None => err("missing [chords]".into()),
     }
 
-    (Some(ChordFile { file: file.into(), name, app, title, chords }), errors)
+    (Some(ChordFile { file: file.into(), name, app, title, chords, patterns }), errors)
 }
 
 pub struct Resolved<'a> {
     pub file: &'a ChordFile,
-    pub chord: &'a Chord,
+    /// With pattern captures already filled in.
+    pub chord: Chord,
     /// Other files in the same priority tier that also define this chord (they lose).
     pub shadowed: Vec<&'a str>,
 }
@@ -101,13 +106,24 @@ pub fn resolve<'a>(files: &'a [ChordFile], exe: &str, title: &str, chord: &str) 
             _ => None,
         }
     };
+    // Within a tier an exact chord (kind 0) beats a pattern (kind 1).
+    let lookup = |f: &ChordFile| -> Option<(u8, Chord)> {
+        if let Some(found) = f.chords.get(chord) {
+            return Some((0, found.clone()));
+        }
+        f.patterns.iter().find_map(|(key, re)| Some((1, fill_chord(&f.chords[key], &re.captures(chord)?))))
+    };
     let mut hits: Vec<_> = files
         .iter()
-        .filter_map(|f| Some((tier(f)?, f, f.chords.get(chord)?)))
+        .filter_map(|f| {
+            let (kind, found) = lookup(f)?;
+            Some(((tier(f)?, kind), f, found))
+        })
         .collect();
     hits.sort_by(|a, b| a.0.cmp(&b.0).then_with(|| a.1.file.cmp(&b.1.file)));
-    let &(best, file, chord) = hits.first()?;
-    let shadowed = hits[1..].iter().filter(|h| h.0 == best).map(|h| h.1.file.as_str()).collect();
+    let mut hits = hits.into_iter();
+    let (best, file, chord) = hits.next()?;
+    let shadowed = hits.filter(|h| h.0 == best).map(|h| h.1.file.as_str()).collect();
     Some(Resolved { file, chord, shadowed })
 }
 
@@ -153,10 +169,54 @@ pub fn cmd_line(command: &str) -> String {
     format!("/S /C \"{command}\"")
 }
 
-fn parse_chord(key: &str, value: &toml::Value) -> Result<Chord, String> {
-    if key.is_empty() || !key.chars().all(|c| CHORD_CHARS.contains(c)) {
-        return Err(format!("only these characters are allowed: {CHORD_CHARS}"));
+/// Chord key → anchored regex when it has `( … )` parts. Text outside parentheses is literal
+/// and limited to chord letters; text inside is regex syntax.
+fn compile_pattern(key: &str) -> Result<Option<regex::Regex>, String> {
+    if !key.contains('(') {
+        if key.is_empty() || !key.chars().all(|c| CHORD_CHARS.contains(c)) {
+            return Err(format!("only these characters are allowed: {CHORD_CHARS}"));
+        }
+        return Ok(None);
     }
+    let mut pattern = String::from("^");
+    let mut depth = 0;
+    for c in key.chars() {
+        match c {
+            '(' => depth += 1,
+            ')' if depth > 0 => depth -= 1,
+            _ if depth == 0 && !CHORD_CHARS.contains(c) => {
+                return Err(format!("'{c}' outside ( ) must be one of {CHORD_CHARS}"));
+            }
+            _ => {}
+        }
+        if depth == 0 && c != ')' {
+            pattern.push_str(&regex::escape(&c.to_string()));
+        } else {
+            pattern.push(c);
+        }
+    }
+    pattern.push('$');
+    regex::Regex::new(&pattern).map(Some).map_err(|e| format!("bad pattern: {e}"))
+}
+
+/// `$1`…`$9` in `text` → the pattern's captures.
+fn fill(text: &str, captures: &regex::Captures) -> String {
+    (1..captures.len()).rev().fold(text.to_string(), |text, n| {
+        text.replace(&format!("${n}"), captures.get(n).map_or("", |m| m.as_str()))
+    })
+}
+
+fn fill_chord(chord: &Chord, captures: &regex::Captures) -> Chord {
+    let action = match &chord.action {
+        Action::Shell(s) => Action::Shell(fill(s, captures)),
+        Action::Palette(s) => Action::Palette(fill(s, captures)),
+        other => other.clone(),
+    };
+    Chord { name: fill(&chord.name, captures), action }
+}
+
+fn parse_chord(key: &str, value: &toml::Value) -> Result<(Chord, Option<regex::Regex>), String> {
+    let pattern = compile_pattern(key)?;
     let toml::Value::Table(fields) = value else {
         return Err("must be a table like { name = \"…\", shortcut = \"…\" }".into());
     };
@@ -176,7 +236,7 @@ fn parse_chord(key: &str, value: &toml::Value) -> Result<Chord, String> {
     }
     let name = name.ok_or("missing 'name'")?;
     match <[Action; 1]>::try_from(actions) {
-        Ok([action]) => Ok(Chord { name, action }),
+        Ok([action]) => Ok((Chord { name, action }, pattern)),
         Err(_) => Err("needs exactly one of 'shortcut', 'shell', 'palette'".into()),
     }
 }
@@ -340,6 +400,46 @@ mod tests {
             list,
             vec![("/e".to_string(), "h.toml".to_string()), ("gd".to_string(), "ag.toml".to_string())]
         );
+    }
+
+    fn global(chords: &str) -> ChordFile {
+        let (f, errors) = parse_file("g.toml", &format!("name = \"G\"\n[chords]\n{chords}\n"));
+        assert!(errors.is_empty(), "{errors:?}");
+        f.unwrap()
+    }
+
+    #[test]
+    fn pattern_chord_matches_and_fills_captures() {
+        let files = [global(r#"'/g(\d+)' = { name = "Go to line $1", shell = "echo $1" }"#)];
+        let r = resolve(&files, "x.exe", "", "/g42").unwrap();
+        assert_eq!(r.chord.name, "Go to line 42");
+        assert_eq!(r.chord.action, Action::Shell("echo 42".into()));
+    }
+
+    #[test]
+    fn pattern_literal_part_is_literal() {
+        let files = [global(r#"'.(a+)' = { name = "x", shell = "x" }"#)];
+        assert!(resolve(&files, "x.exe", "", ".aa").is_some());
+        assert!(resolve(&files, "x.exe", "", "za").is_none());
+        assert!(resolve(&files, "x.exe", "", ".ab").is_none());
+    }
+
+    #[test]
+    fn exact_chord_beats_pattern() {
+        let files = [global(
+            r#"'/g(\d+)' = { name = "pattern", shell = "p" }
+"/g1" = { name = "exact", shell = "e" }"#,
+        )];
+        assert_eq!(resolve(&files, "x.exe", "", "/g1").unwrap().chord.name, "exact");
+    }
+
+    #[test]
+    fn bad_patterns_are_errors() {
+        let (_, errors) = parse_file(
+            "g.toml",
+            "name = \"G\"\n[chords]\n'/g(\\d+' = { name = \"x\", shell = \"x\" }\n'Q(a)' = { name = \"x\", shell = \"x\" }\n",
+        );
+        assert_eq!(errors.len(), 2, "{errors:?}");
     }
 
     #[test]
