@@ -22,9 +22,12 @@ use windows::Win32::UI::WindowsAndMessaging::{
     LoadIconW, MF_CHECKED, MF_SEPARATOR, MF_STRING, MSG, PostMessageW, RegisterClassW,
     SW_HIDE, SWP_NOACTIVATE, SWP_SHOWWINDOW, SetForegroundWindow, SetWindowPos, ShowWindow,
     TPM_RETURNCMD, TPM_RIGHTBUTTON, TrackPopupMenu, TranslateMessage, WM_APP, WM_LBUTTONUP,
-    WM_PAINT, WM_RBUTTONUP, WNDCLASSW, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_POPUP,
+    PBT_APMRESUMEAUTOMATIC, WM_PAINT, WM_POWERBROADCAST, WM_RBUTTONUP, WM_WTSSESSION_CHANGE,
+    WTS_SESSION_UNLOCK, WNDCLASSW, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_POPUP,
 };
 use windows::core::{PCWSTR, w};
+
+use windows::Win32::System::RemoteDesktop::{NOTIFY_FOR_THIS_SESSION, WTSRegisterSessionNotification};
 
 use crate::autostart;
 
@@ -80,6 +83,8 @@ pub fn start(chords_dir: PathBuf) {
         };
         PANEL.store(hwnd.0 as isize, Ordering::Release);
         add_tray(hwnd);
+        // Unlock events arrive as WM_WTSSESSION_CHANGE; resume as WM_POWERBROADCAST (top-level windows get it).
+        let _ = WTSRegisterSessionNotification(hwnd, NOTIFY_FOR_THIS_SESSION);
 
         let mut msg = MSG::default();
         while GetMessageW(&mut msg, HWND::default(), 0, 0).as_bool() {
@@ -143,6 +148,14 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
         WM_PANEL => {
             if wparam.0 == 1 { place_and_show(hwnd) } else { unsafe { let _ = ShowWindow(hwnd, SW_HIDE); } }
             LRESULT(0)
+        }
+        WM_WTSSESSION_CHANGE if wparam.0 as u32 == WTS_SESSION_UNLOCK => {
+            crate::win::reset_hook();
+            LRESULT(0)
+        }
+        WM_POWERBROADCAST if wparam.0 as u32 == PBT_APMRESUMEAUTOMATIC => {
+            crate::win::reset_hook();
+            LRESULT(1)
         }
         WM_PAINT => {
             paint(hwnd);

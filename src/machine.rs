@@ -77,7 +77,13 @@ pub struct Machine {
     space_held: bool,
     chord_mode: bool,
     buffer: Chord,
+    last_space_ms: u32,
+    last_caps_ms: u32,
 }
+
+/// A held key auto-repeats well within this; longer silence means its release was lost.
+const STALE_MS: u32 = 1_500;
+const MODIFIER_KEYS: [u16; 8] = [0xA0, 0xA1, VK_LCONTROL, VK_RCONTROL, VK_LMENU, VK_RMENU, VK_LWIN, VK_RWIN];
 
 impl Machine {
     pub const fn new() -> Self {
@@ -89,7 +95,50 @@ impl Machine {
             space_held: false,
             chord_mode: false,
             buffer: Chord::new(),
+            last_space_ms: 0,
+            last_caps_ms: 0,
         }
+    }
+
+    /// `now_ms` is the event's timestamp (KBDLLHOOKSTRUCT.time).
+    pub fn key_at(&mut self, vk: u16, down: bool, now_ms: u32) -> Decision {
+        if down && self.caps_held && vk == VK_SPACE && now_ms.wrapping_sub(self.last_caps_ms) > STALE_MS {
+            self.caps_held = false;
+            self.blocked[VK_CAPITAL as usize] = false;
+        }
+        let space_lost = down
+            && self.chord_mode
+            && vk != VK_SPACE
+            && now_ms.wrapping_sub(self.last_space_ms) > STALE_MS;
+        if space_lost {
+            self.chord_mode = false;
+            self.space_held = false;
+            self.blocked[VK_SPACE as usize] = false;
+        }
+        match vk {
+            VK_SPACE => self.last_space_ms = now_ms,
+            VK_CAPITAL => self.last_caps_ms = now_ms,
+            _ => {}
+        }
+        let decision = self.key(vk, down);
+        if space_lost {
+            return Decision { block: decision.block, effect: Some(Effect::Cancel) };
+        }
+        decision
+    }
+
+    /// Clears Ctrl/Alt/Win/Shift whose release we missed; `is_down` reads the real key state.
+    pub fn sync_modifiers(&mut self, is_down: impl Fn(u16) -> bool) {
+        for vk in MODIFIER_KEYS {
+            if self.modifiers[vk as usize] && !is_down(vk) {
+                self.modifiers[vk as usize] = false;
+            }
+        }
+    }
+
+    /// Back to idle, as after a fresh start (used after lock/unlock and sleep).
+    pub fn reset(&mut self) {
+        *self = Self::new();
     }
 
     pub fn key(&mut self, vk: u16, down: bool) -> Decision {
@@ -400,6 +449,55 @@ mod tests {
         press(&mut m, VK_SPACE);
         press(&mut m, VK_CAPITAL);
         assert_eq!(press(&mut m, VK_SPACE), pass()); // auto-repeat of the same Space hold
+    }
+
+    #[test]
+    fn lost_space_release_ends_chord_mode_on_next_key() {
+        let mut m = Machine::new();
+        m.key_at(VK_CAPITAL, true, 0);
+        m.key_at(VK_SPACE, true, 10);
+        m.key_at(VK_CAPITAL, false, 20);
+        // Space up never arrived; a held Space would auto-repeat, so 2 s of silence means it was released.
+        assert_eq!(
+            m.key_at(G, true, 2_010),
+            Decision { block: false, effect: Some(Effect::Cancel) }
+        );
+        assert_eq!(m.key_at(D, true, 2_020), pass());
+    }
+
+    #[test]
+    fn space_auto_repeat_keeps_chord_mode_alive() {
+        let mut m = Machine::new();
+        m.key_at(VK_CAPITAL, true, 0);
+        m.key_at(VK_SPACE, true, 10);
+        m.key_at(VK_SPACE, true, 1_400);
+        m.key_at(VK_SPACE, true, 2_800);
+        assert_eq!(m.key_at(G, true, 2_900), block_with(Effect::Show(chord("g"))));
+    }
+
+    #[test]
+    fn lost_caps_release_does_not_start_chord_mode() {
+        let mut m = Machine::new();
+        m.key_at(VK_CAPITAL, true, 0);
+        // Caps up never arrived; Space much later is a normal space.
+        assert_eq!(m.key_at(VK_SPACE, true, 5_000), pass());
+    }
+
+    #[test]
+    fn stuck_modifier_is_cleared_by_sync() {
+        let mut m = in_chord_mode();
+        press(&mut m, VK_LCONTROL); // its release gets lost
+        m.sync_modifiers(|_| false);
+        assert_eq!(press(&mut m, G), block_with(Effect::Show(chord("g"))));
+    }
+
+    #[test]
+    fn reset_forgets_everything() {
+        let mut m = in_chord_mode();
+        press(&mut m, G);
+        m.reset();
+        assert_eq!(press(&mut m, D), pass());
+        assert_eq!(release(&mut m, G), pass());
     }
 
     #[test]

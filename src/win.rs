@@ -10,6 +10,7 @@ use std::os::windows::process::CommandExt;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
+use std::sync::atomic::{AtomicIsize, AtomicU32, Ordering};
 use std::sync::mpsc::{SyncSender, sync_channel};
 use std::time::Duration;
 
@@ -19,24 +20,24 @@ use windows::Win32::Foundation::{
 use windows::Win32::System::Console::FreeConsole;
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::System::Threading::{
-    CreateMutexW, GetCurrentThread, OpenProcess, PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION,
+    CreateMutexW, GetCurrentThread, GetCurrentThreadId, OpenProcess, PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION,
     QueryFullProcessImageNameW, SetThreadPriority, THREAD_PRIORITY_TIME_CRITICAL,
 };
 use windows::Win32::UI::Input::KeyboardAndMouse::{
     INPUT, INPUT_0, INPUT_KEYBOARD, KEYBD_EVENT_FLAGS, KEYBDINPUT, KEYEVENTF_EXTENDEDKEY,
-    KEYEVENTF_KEYUP, KEYEVENTF_UNICODE, SendInput, VIRTUAL_KEY,
+    GetAsyncKeyState, KEYEVENTF_KEYUP, KEYEVENTF_UNICODE, SendInput, VIRTUAL_KEY,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     CallNextHookEx, GetForegroundWindow, GetMessageW, GetWindowTextW, GetWindowThreadProcessId,
-    HC_ACTION, HHOOK, KBDLLHOOKSTRUCT, MSG, SetWindowsHookExW, WH_KEYBOARD_LL, WM_KEYDOWN,
-    WM_SYSKEYDOWN,
+    HC_ACTION, HHOOK, KBDLLHOOKSTRUCT, MSG, PostThreadMessageW, SetTimer, SetWindowsHookExW,
+    UnhookWindowsHookEx, WH_KEYBOARD_LL, WM_APP, WM_KEYDOWN, WM_SYSKEYDOWN, WM_TIMER,
 };
 use windows::core::{PWSTR, w};
 
 use crate::config::{self, Action};
 use crate::panel;
 use crate::keys::{Key, parse_shortcut};
-use crate::machine::{Effect, Machine, VK_CAPITAL};
+use crate::machine::{Effect, Machine, VK_CAPITAL, VK_SPACE};
 
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 const CAPS: [Key; 1] = [Key { vk: VK_CAPITAL, extended: false }];
@@ -45,6 +46,10 @@ const CAPS: [Key; 1] = [Key { vk: VK_CAPITAL, extended: false }];
 const TAG: usize = 0x4348_4F52;
 
 static EFFECTS: OnceLock<SyncSender<Effect>> = OnceLock::new();
+static HOOK: AtomicIsize = AtomicIsize::new(0);
+static HOOK_THREAD: AtomicU32 = AtomicU32::new(0);
+const WM_RESET_HOOK: u32 = WM_APP + 10;
+const REINSTALL_EVERY_MS: u32 = 5 * 60 * 1000;
 
 thread_local! {
     static MACHINE: RefCell<Machine> = const { RefCell::new(Machine::new()) };
@@ -199,17 +204,52 @@ fn run_action(action: &Action) {
     }
 }
 
+/// Asks the hook thread to forget all key state and reinstall the hook (after unlock or sleep).
+pub fn reset_hook() {
+    let thread = HOOK_THREAD.load(Ordering::Acquire);
+    if thread != 0 {
+        unsafe {
+            let _ = PostThreadMessageW(thread, WM_RESET_HOOK, WPARAM(0), LPARAM(0));
+        }
+    }
+}
+
+/// Windows silently drops a hook that is ever too slow; reinstalling now and then revives it.
+fn install_hook() {
+    unsafe {
+        let module = GetModuleHandleW(None).expect("GetModuleHandleW");
+        let old = HOOK.load(Ordering::Acquire);
+        if old != 0 {
+            let _ = UnhookWindowsHookEx(HHOOK(old as *mut _));
+        }
+        match SetWindowsHookExW(WH_KEYBOARD_LL, Some(hook), HINSTANCE(module.0), 0) {
+            Ok(h) => HOOK.store(h.0 as isize, Ordering::Release),
+            Err(e) => {
+                say!("could not install keyboard hook: {e}");
+                std::process::exit(1);
+            }
+        }
+    }
+}
+
 fn hook_thread() {
     unsafe {
         let _ = SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_TIME_CRITICAL);
-        let module = GetModuleHandleW(None).expect("GetModuleHandleW");
-        if let Err(e) = SetWindowsHookExW(WH_KEYBOARD_LL, Some(hook), HINSTANCE(module.0), 0) {
-            say!("could not install keyboard hook: {e}");
-            std::process::exit(1);
-        }
+        HOOK_THREAD.store(GetCurrentThreadId(), Ordering::Release);
+        install_hook();
+        let _ = SetTimer(HWND::default(), 0, REINSTALL_EVERY_MS, None);
         // The hook only runs while this thread pumps messages.
         let mut msg = MSG::default();
-        while GetMessageW(&mut msg, HWND::default(), 0, 0).as_bool() {}
+        while GetMessageW(&mut msg, HWND::default(), 0, 0).as_bool() {
+            match msg.message {
+                WM_TIMER => install_hook(),
+                WM_RESET_HOOK => {
+                    MACHINE.with_borrow_mut(|m| m.reset());
+                    install_hook();
+                }
+                _ => {}
+            }
+        }
     }
 }
 
@@ -220,7 +260,13 @@ unsafe extern "system" fn hook(code: i32, wparam: WPARAM, lparam: LPARAM) -> LRE
             let down = matches!(wparam.0 as u32, WM_KEYDOWN | WM_SYSKEYDOWN);
             // A panic must not unwind into Windows; on panic the key just passes through.
             let decision = catch_unwind(AssertUnwindSafe(|| {
-                MACHINE.with_borrow_mut(|m| m.key(event.vkCode as u16, down))
+                MACHINE.with_borrow_mut(|m| {
+                    let vk = event.vkCode as u16;
+                    if down && (vk == VK_SPACE || vk == VK_CAPITAL) {
+                        m.sync_modifiers(|k| unsafe { GetAsyncKeyState(k as i32) } < 0);
+                    }
+                    m.key_at(vk, down, event.time)
+                })
             }));
             if let Ok(decision) = decision {
                 if let (Some(effect), Some(tx)) = (decision.effect, EFFECTS.get()) {
