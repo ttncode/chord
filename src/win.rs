@@ -15,9 +15,11 @@ use std::sync::mpsc::{SyncSender, sync_channel};
 use std::time::Duration;
 
 use windows::Win32::Foundation::{
-    CloseHandle, ERROR_ALREADY_EXISTS, GetLastError, HINSTANCE, HWND, LPARAM, LRESULT, WPARAM,
+    CloseHandle, ERROR_ALREADY_EXISTS, GetLastError, HINSTANCE, HWND, LPARAM, LRESULT, POINT, RECT,
+    WPARAM,
 };
 use windows::Win32::System::Console::FreeConsole;
+use windows::Win32::UI::HiDpi::{DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2, SetProcessDpiAwarenessContext};
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::System::Threading::{
     CreateMutexW, GetCurrentThread, GetCurrentThreadId, OpenProcess, PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION,
@@ -28,13 +30,14 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{
     GetAsyncKeyState, KEYEVENTF_KEYUP, KEYEVENTF_UNICODE, SendInput, VIRTUAL_KEY,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-    CallNextHookEx, GetForegroundWindow, GetMessageW, GetWindowTextW, GetWindowThreadProcessId,
+    CallNextHookEx, GetForegroundWindow, GetWindowRect, SetCursorPos, GetMessageW, GetWindowTextW, GetWindowThreadProcessId,
     HC_ACTION, HHOOK, KBDLLHOOKSTRUCT, MSG, PostThreadMessageW, SetTimer, SetWindowsHookExW,
     UnhookWindowsHookEx, WH_KEYBOARD_LL, WM_APP, WM_KEYDOWN, WM_SYSKEYDOWN, WM_TIMER,
 };
 use windows::core::{PWSTR, w};
 
-use crate::config::{self, Action};
+use crate::config::{self, Action, Mouse};
+use crate::{hints, uia};
 use crate::panel;
 use crate::window;
 use crate::keys::{Key, parse_shortcut};
@@ -72,17 +75,21 @@ pub fn detach_console() {
     }
 }
 
-/// Chords shown in the panel during one chord-mode session, read once when it starts.
+/// One chord-mode session: the window it started in and the chords usable there, read once.
 struct Session {
+    hwnd: HWND,
     app: String,
+    title: String,
+    files: Vec<config::ChordFile>,
     chords: Vec<(String, String)>,
 }
 
 impl Session {
     fn start(dir: &Path) -> Self {
+        let hwnd = unsafe { GetForegroundWindow() };
         let (exe, title) = foreground();
         let (files, _) = config::load_dir(dir);
-        Self { chords: config::available(&files, &exe, &title), app: exe }
+        Self { hwnd, chords: config::available(&files, &exe, &title), files, app: exe, title }
     }
 
     fn lines(&self, buffer: &str) -> Vec<String> {
@@ -94,9 +101,65 @@ impl Session {
         });
         std::iter::once(header).chain(matching.map(|(chord, name)| format!("{chord:<6} {name}"))).collect()
     }
+
+    /// The click kind when `buffer` is exactly a `hints` chord here.
+    fn hints_kind(&self, buffer: &str) -> Option<Mouse> {
+        match config::resolve(&self.files, &self.app, &self.title, buffer)?.chord.action {
+            Action::Hints(kind) => Some(kind),
+            _ => None,
+        }
+    }
+}
+
+/// Hint labels on screen: the letters typed after `key` pick a target.
+struct Hints {
+    key: String,
+    kind: Mouse,
+    area: RECT,
+    targets: Vec<(POINT, String)>,
+}
+
+impl Hints {
+    fn scan(hwnd: HWND, key: &str, kind: Mouse) -> Option<Self> {
+        let points = match uia::clickable_points(hwnd) {
+            Ok(points) => points,
+            Err(e) => {
+                say!("  ! could not read this window's buttons: {e}");
+                return None;
+            }
+        };
+        let mut area = RECT::default();
+        unsafe {
+            let _ = GetWindowRect(hwnd, &mut area);
+        }
+        let labels = hints::labels(points.len());
+        let targets = points.into_iter().zip(labels).collect::<Vec<_>>();
+        Some(Self { key: key.to_string(), kind, area, targets })
+    }
+
+    fn show(&self, typed: &str) {
+        let visible = self.targets.iter().filter(|(_, label)| label.starts_with(typed)).cloned().collect();
+        panel::show_hints(self.area, visible);
+    }
+
+    fn click(&self, label: &str) {
+        match self.targets.iter().find(|(_, l)| l == label) {
+            Some((point, _)) => {
+                unsafe {
+                    let _ = SetCursorPos(point.x, point.y);
+                }
+                window::mouse(self.kind);
+            }
+            None => say!("  -> no hint '{label}'"),
+        }
+    }
 }
 
 pub fn run(chords_dir: PathBuf) {
+    unsafe {
+        // Physical pixels everywhere, so UI Automation rectangles, the cursor and the overlay agree.
+        let _ = SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+    }
     let (tx, rx) = sync_channel(64);
     EFFECTS.set(tx).expect("run() called twice");
     std::thread::spawn(hook_thread);
@@ -111,12 +174,14 @@ pub fn run(chords_dir: PathBuf) {
     say!("  Hold Caps Lock, then hold Space, type a chord, release Space.");
     say!("  Emergency exit: Ctrl + Space + Esc (or Ctrl+C here).");
 
-    let mut session = None;
+    let mut session: Option<Session> = None;
+    let mut hints: Option<Hints> = None;
     let mut buffer = String::new();
     for effect in rx {
         match effect {
             Effect::Enter => {
                 buffer.clear();
+                end_hints(&mut hints);
                 let s = Session::start(&chords_dir);
                 panel::show(s.lines(""));
                 session = Some(s);
@@ -124,17 +189,34 @@ pub fn run(chords_dir: PathBuf) {
             }
             Effect::Show(chord) => {
                 buffer = chord.as_str().to_string();
-                if let Some(s) = &session {
-                    panel::show(s.lines(&buffer));
-                }
                 show(&buffer);
+                if let Some(h) = &hints {
+                    match buffer.strip_prefix(h.key.as_str()) {
+                        Some(typed) => {
+                            h.show(typed);
+                            continue;
+                        }
+                        None => end_hints(&mut hints),
+                    }
+                }
+                let Some(s) = &session else { continue };
+                match s.hints_kind(&buffer).and_then(|kind| Hints::scan(s.hwnd, &buffer, kind)) {
+                    Some(h) => {
+                        panel::hide();
+                        h.show("");
+                        hints = Some(h);
+                    }
+                    None => panel::show(s.lines(&buffer)),
+                }
             }
             Effect::FireKeep(chord) => {
                 // A Caps tap ran (and cleared) the typed letters; Shift + letter keeps them.
                 if chord.as_str() == buffer {
                     buffer.clear();
                 }
-                fire(&chords_dir, chord.as_str());
+                if !click_hint(&mut hints, chord.as_str()) {
+                    fire(&chords_dir, chord.as_str());
+                }
                 if let Some(s) = &session {
                     panel::show(s.lines(&buffer));
                 }
@@ -142,11 +224,14 @@ pub fn run(chords_dir: PathBuf) {
             }
             Effect::Cancel => {
                 panel::hide();
+                end_hints(&mut hints);
                 say!("  (cancelled)");
             }
             Effect::Fire(chord) => {
                 panel::hide();
-                fire(&chords_dir, chord.as_str());
+                if !click_hint(&mut hints, chord.as_str()) {
+                    fire(&chords_dir, chord.as_str());
+                }
             }
             Effect::ToggleCaps => send_combo(&CAPS),
             // Toggling twice leaves the state unchanged, and Windows rewrites the light to match it each time.
@@ -161,6 +246,24 @@ pub fn run(chords_dir: PathBuf) {
             }
         }
     }
+}
+
+fn end_hints(hints: &mut Option<Hints>) {
+    if hints.take().is_some() {
+        panel::hide_hints();
+    }
+}
+
+/// True when hints were showing: the chord was a hint pick (clicked or not) and must not run as a chord.
+fn click_hint(hints: &mut Option<Hints>, chord: &str) -> bool {
+    let Some(h) = hints.take() else { return false };
+    panel::hide_hints();
+    match chord.strip_prefix(h.key.as_str()) {
+        Some("") => say!("  -> no hint typed"),
+        Some(label) => h.click(label),
+        None => return false,
+    }
+    true
 }
 
 fn show(buffer: &str) {
@@ -221,6 +324,8 @@ fn run_action(action: &Action) {
             }
         }
         Action::Mouse(action) => window::mouse(*action),
+        // Hint chords are handled while typing (see `run`); reaching here means hints found nothing to show.
+        Action::Hints(_) => say!("  -> no clickable elements found"),
     }
 }
 

@@ -2,7 +2,7 @@
 
 Keyboard chords for Windows: hold Caps Lock, hold Space, type a few letters, release Space, and the matching action runs in the app in front. Chords live in TOML files you edit.
 
-No window or tray icon yet; the console prints what the tool sees and does. Windows only for now.
+While chord mode is on, a panel on the left lists the chords for the app in front and narrows as you type. A tray icon offers "Open chords folder", "Start with Windows" and "Quit". Windows only for now.
 
 Inspired by [KeyChord/Chord](https://github.com/KeyChord/Chord) for macOS. This is an independent implementation; no code is shared.
 
@@ -16,11 +16,21 @@ cargo test            # logic tests, no keyboard needed
 cargo run --release   # uses the chords\ folder; or: cargo run --release -- --chords D:\my-chords
 ```
 
-Quit with `Ctrl + Space + Esc`, or `Ctrl+C` in the console.
+Quit with `Ctrl + Space + Esc`, the tray menu, or `Ctrl+C` in the console. Only one copy runs at a time.
+
+**Start with Windows:** tray icon → "Start with Windows". It starts with `--background` (no console window) and the chords folder you're using now.
 
 Don't click inside the console while it runs: Windows pauses console output while text is selected (QuickEdit), and chords stop printing until you press Esc there.
 
-Inside chord mode: `Backspace` deletes the last letter, `Esc` clears all of them. Holding Ctrl, Alt or Win lets normal shortcuts through.
+Inside chord mode:
+
+| Key | Does |
+|---|---|
+| `Backspace` / `Shift+Backspace` | Delete the last letter / all letters |
+| `Esc` | Clear the letters |
+| `Caps Lock` | Run the typed chord and stay in chord mode; with nothing typed, run the last chord again (`du⇪⇪⇪` = up three folders) |
+| `Shift` + letter | Run the typed letters plus this letter, keep the typed letters (`t` then `Shift`+`t`,`s`,`p` runs `tt`, `ts`, `tp`) |
+| Ctrl / Alt / Win + key | Passed to the app as a normal shortcut |
 
 ## Chord files
 
@@ -43,11 +53,16 @@ Each chord has a `name` and exactly one action:
 |---|---|---|
 | `shortcut` | Presses keys. Combos joined with `+`; several combos separated by spaces run one after another | `"ctrl+shift+p"`, `"ctrl+k ctrl+0"`, `"space f f"` |
 | `palette` | Opens the command palette (`Ctrl+Shift+P`), waits 0.4 s, types the text, presses Enter. If the palette opens slower, the text lands in your file: use a `shortcut` where one exists | `"Collapse Folders in Explorer"` |
+| `focus` | Brings the app's window to the front (its next window when it's already in front). Optional `launch` runs when it isn't open | `focus = "windowsterminal.exe", launch = "wt"` |
+| `mouse` | `click`, `right-click`, `double-click`, `middle-click`, `scroll-up`, `scroll-down` at the pointer | `mouse = "click"` |
+| `hints` | Yellow labels on every clickable element of the window; type a label, release Space, it's clicked (`click`, `right-click`, `double-click`) | `hints = "click"` |
 | `shell` | Runs the command exactly as written (`cmd /S /C "…"`), without a console window | `'start "" "C:\path\app.exe"'` |
 
 Key names: `ctrl shift alt win`, `a`–`z`, `0`–`9`, `f1`–`f24`, `left right up down home end pageup pagedown insert delete`, `backspace enter esc tab space`, and `` ` - = [ ] \ ; ' , . / ``. Write `+` as `plus`.
 
 Chord letters: `a`–`z`, `0`–`9` and `` ; = , - . / [ ] ' ``. Start global chords with a symbol (`/e`) so they never clash with app chords.
+
+**Regex chords:** parts in `( )` are a regular expression, the rest is literal; `$1`…`$9` in `name`, `shell` and `palette` are filled from the match. Example: `'/o(\d+)' = { name = "Open port $1", shell = 'start http://localhost:$1' }`, then type `/o3000`. An exact chord beats a pattern.
 
 **Which chord wins** when several files define it: a file matching the app *and* window title, then the app only, then a global file with a title, then a plain global file. If two files tie, the one whose file name sorts first wins and the console prints a warning.
 
@@ -59,7 +74,7 @@ Chord letters: `a`–`z`, `0`–`9` and `` ; = , - . / [ ] ' ``. Start global ch
 
 | File | Chords |
 |---|---|
-| `global.toml` | `/e` File Explorer · `/wh` `/wl` `/wk` `/wj` snap window left / right / maximize / restore · `/dh` `/dl` previous / next desktop · `/dn` new desktop · `/dx` close desktop · `/a` open Antigravity · `/t` open Windows Terminal |
+| `global.toml` | `/e` File Explorer · `/wh` `/wl` `/wk` `/wj` snap window left / right / maximize / restore · `/dh` `/dl` previous / next desktop · `/dn` new desktop · `/dx` close desktop · `/a` switch to Antigravity · `/t` switch to Windows Terminal · `/mc` `/mr` `/md` click / right-click / double-click · `/mj` `/mk` scroll down / up · `;` click by hint label · `'` right-click by hint label |
 | `antigravity.toml` | `mf` `me` `ms` `mv` `mg` `mr` `mt` `mh` menus (File, Edit, Selection, View, Go, Run, Terminal, Help) · `gd` go to definition · `gf` go to file · `cp` command palette · `fe` focus Explorer · `ts` toggle sidebar · `ca` collapse folders · `tt` toggle terminal · `fs` search in files · `fg` source control · `fd` focus editor |
 | `windows-terminal.toml` | `nt` new tab · `cx` close pane · `tn` / `tp` next / previous tab (set the tab switcher to "In order") · `sv` / `sh` split right / down |
 | `lazyvim.toml` | `fe` explorer · `ff` find files · `fg` grep · `bd` delete buffer (Normal mode) |
@@ -69,6 +84,14 @@ LazyVim chords need Neovim to put "nvim" in the window title. Add this to your N
 ```lua
 vim.opt.title = true
 ```
+
+## Hint labels
+
+Type `;` in chord mode (keep Space held): yellow labels appear on the buttons, links, tabs and fields of the window in front. Type a label's letters (the list narrows as you type), release Space, and that element is clicked. `Backspace` past the `;` hides the labels.
+
+- Works through Windows UI Automation, so it covers most apps (Explorer, Settings, Antigravity, Chrome, Office). Custom-drawn apps and games may show few or no labels.
+- In Chrome, Vimium's `f` is faster and more complete for web pages.
+- The first `;` in an Electron app (Antigravity, Slack) can come back empty while the app builds its accessibility tree; try again.
 
 ## Manual test checklist
 
@@ -81,6 +104,26 @@ Chords from files:
 - [ ] In Neovim (with `vim.opt.title = true`): `fe` opens the LazyVim explorer.
 - [ ] Change a chord's `shortcut` in a file, save, and run it again: the new shortcut is used without restarting.
 - [ ] Write `shorcut` (typo) in one chord: the console names that chord, and the other chords still work.
+
+Panel and tray:
+- [ ] Holding Caps Lock + Space shows the panel at the top left, without taking focus from the app; typing narrows it; releasing Space hides it.
+- [ ] Tray icon → "Open chords folder" opens the folder; "Start with Windows" toggles a check mark and survives a reboot; "Quit" exits.
+- [ ] Starting a second copy prints "chord is already running".
+
+Chord mode keys:
+- [ ] In Antigravity: `ts` then `Caps` toggles the sidebar and stays in chord mode; `Caps` again toggles it back.
+- [ ] In Windows Terminal: `t` then `Shift`+`n` opens a new tab (`tn`… runs next tab) while the panel still shows `t`.
+
+Windows and mouse:
+- [ ] `/a` switches to Antigravity (starts it when closed); with two Antigravity windows, `/a` again switches to the other one.
+- [ ] `/mc` clicks at the pointer, `/mj` scrolls down.
+
+Hints:
+- [ ] `;` in File Explorer shows labels on its buttons; typing one and releasing Space clicks it.
+- [ ] Labels sit on the right elements at 125%/150% display scaling.
+
+Robustness:
+- [ ] After Win+L and unlocking, and after sleep, chords still work without restarting.
 
 Caps Lock:
 - [ ] Tapping Caps Lock alone still turns it on and off.

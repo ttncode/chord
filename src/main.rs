@@ -11,10 +11,13 @@ macro_rules! say {
 #[cfg(windows)]
 mod autostart;
 mod config;
+mod hints;
 mod keys;
 mod machine;
 #[cfg(windows)]
 mod panel;
+#[cfg(windows)]
+mod uia;
 #[cfg(windows)]
 mod win;
 #[cfg(windows)]

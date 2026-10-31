@@ -26,3 +26,7 @@ name = "Global"
 "/md" = { name = "Mouse: double-click", mouse = "double-click" }
 "/mj" = { name = "Mouse: scroll down", mouse = "scroll-down" }
 "/mk" = { name = "Mouse: scroll up", mouse = "scroll-up" }
+
+# Hint labels: type the chord, then the yellow label's letters, release Space to click it
+";" = { name = "Click (hints)", hints = "click" }
+"'" = { name = "Right-click (hints)", hints = "right-click" }

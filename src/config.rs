@@ -13,6 +13,8 @@ pub enum Action {
     /// Bring the app's window to the front (next window if it's already in front); `launch` runs if it isn't open.
     Focus { exe: String, launch: Option<String> },
     Mouse(Mouse),
+    /// Label the clickable elements in the window; the letters typed after the chord pick one.
+    Hints(Mouse),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -247,6 +249,12 @@ fn parse_chord(key: &str, value: &toml::Value) -> Result<(Chord, Option<regex::R
             "palette" => actions.push(Action::Palette(s.clone())),
             "focus" => actions.push(Action::Focus { exe: s.to_lowercase(), launch: None }),
             "launch" => launch = Some(s.clone()),
+            "hints" => actions.push(Action::Hints(match s.as_str() {
+                "click" => Mouse::Click,
+                "right-click" => Mouse::RightClick,
+                "double-click" => Mouse::DoubleClick,
+                other => return Err(format!("hints \"{other}\" must be click, right-click or double-click")),
+            })),
             "mouse" => actions.push(Action::Mouse(match s.as_str() {
                 "click" => Mouse::Click,
                 "right-click" => Mouse::RightClick,
@@ -270,7 +278,7 @@ fn parse_chord(key: &str, value: &toml::Value) -> Result<(Chord, Option<regex::R
     }
     match <[Action; 1]>::try_from(actions) {
         Ok([action]) => Ok((Chord { name, action }, pattern)),
-        Err(_) => Err("needs exactly one of 'shortcut', 'shell', 'palette', 'focus', 'mouse'".into()),
+        Err(_) => Err("needs exactly one of 'shortcut', 'shell', 'palette', 'focus', 'mouse', 'hints'".into()),
     }
 }
 
@@ -497,6 +505,12 @@ mod tests {
             "name = \"G\"\n[chords]\n\"/a\" = { name = \"x\", shell = \"x\", launch = \"y\" }\n\"/b\" = { name = \"x\", mouse = \"tickle\" }\n",
         );
         assert_eq!(errors.len(), 2, "{errors:?}");
+    }
+
+    #[test]
+    fn hints_action_parses() {
+        let f = global(r#"";" = { name = "Click", hints = "click" }"#);
+        assert_eq!(f.chords[";"].action, Action::Hints(Mouse::Click));
     }
 
     #[test]
