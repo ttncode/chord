@@ -1,59 +1,90 @@
-//! The chord panel (an always-on-top window that never takes focus) and the tray icon.
-//! Both live on one GUI thread; other threads talk to it only through `show`/`hide`/`remove_tray`.
+//! The chord panel (a Spotlight-style window that never takes focus), the hint labels and the tray icon.
+//! All live on one GUI thread; other threads talk to it only through the `pub fn`s here.
+//! Both windows are layered and drawn on a `Canvas`, so they get antialiased corners, shadows and fades.
 
+use std::cell::RefCell;
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicIsize, AtomicU32, Ordering};
 use std::sync::{Mutex, OnceLock};
+use std::time::Instant;
 
-use windows::Win32::Foundation::{COLORREF, HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
-use windows::Win32::UI::HiDpi::GetDpiForWindow;
+use windows::Win32::Foundation::{BOOL, HWND, LPARAM, LRESULT, POINT, RECT, WPARAM};
 use windows::Win32::Graphics::Gdi::{
-    BeginPaint, CreateFontW, CreateSolidBrush, DT_CENTER, DT_LEFT, DT_VCENTER, DT_NOPREFIX, DT_SINGLELINE, DrawTextW,
-    EndPaint, FillRect, GetMonitorInfoW, HFONT, InvalidateRect, MONITOR_DEFAULTTONEAREST,
-    MONITORINFO, MonitorFromWindow, PAINTSTRUCT, SelectObject, SetBkMode, SetTextColor,
-    TRANSPARENT,
+    DT_CENTER, DT_END_ELLIPSIS, DT_LEFT, DT_RIGHT, DT_VCENTER, DeleteObject, GetMonitorInfoW, HFONT, HMONITOR,
+    MONITOR_DEFAULTTONEAREST, MONITORINFO, MonitorFromRect, MonitorFromWindow,
 };
-use windows::Win32::System::LibraryLoader::GetModuleHandleW;
+use windows::Win32::System::LibraryLoader::{GetModuleHandleW, GetProcAddress, LoadLibraryW};
+use windows::Win32::System::Registry::{HKEY_CURRENT_USER, RRF_RT_REG_DWORD, RegGetValueW};
+use windows::Win32::System::RemoteDesktop::{NOTIFY_FOR_THIS_SESSION, WTSRegisterSessionNotification};
+use windows::Win32::UI::HiDpi::{GetDpiForMonitor, MDT_EFFECTIVE_DPI};
 use windows::Win32::UI::Shell::{
-    NIF_ICON, NIF_MESSAGE, NIF_TIP, NIM_ADD, NIM_DELETE, NOTIFYICONDATAW, Shell_NotifyIconW,
+    NIF_ICON, NIF_MESSAGE, NIF_TIP, NIM_ADD, NIM_DELETE, NIM_MODIFY, NOTIFYICONDATAW, Shell_NotifyIconW,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-    AppendMenuW, CreatePopupMenu, CreateWindowExW, DefWindowProcW, DestroyMenu, DispatchMessageW,
-    GetCursorPos, GetForegroundWindow, GetMessageW, HMENU, HWND_TOPMOST, IDI_APPLICATION,
-    LoadIconW, MF_CHECKED, MF_SEPARATOR, MF_STRING, MSG, PostMessageW, RegisterClassW,
-    SW_HIDE, SWP_NOACTIVATE, SWP_SHOWWINDOW, SetForegroundWindow, SetWindowPos, ShowWindow,
-    TPM_RETURNCMD, TPM_RIGHTBUTTON, TrackPopupMenu, TranslateMessage, WM_APP, WM_LBUTTONUP,
-    PBT_APMRESUMEAUTOMATIC, WM_PAINT, WM_POWERBROADCAST, WM_RBUTTONUP, WM_WTSSESSION_CHANGE,
-    WTS_SESSION_UNLOCK, WNDCLASSW, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_POPUP,
-    LWA_COLORKEY, RegisterWindowMessageW, SendMessageW, SetLayeredWindowAttributes, WS_EX_LAYERED,
-    WS_EX_TRANSPARENT,
+    AppendMenuW, CreatePopupMenu, CreateWindowExW, DefWindowProcW, DestroyIcon, DestroyMenu, DispatchMessageW,
+    GetCursorPos, GetForegroundWindow, GetMessageW, GetSystemMetrics, HICON, HMENU, HWND_TOPMOST, IDI_APPLICATION,
+    IsWindowVisible, KillTimer, LoadIconW, MF_CHECKED, MF_SEPARATOR, MF_STRING, MSG, PBT_APMRESUMEAUTOMATIC,
+    PostMessageW, RegisterClassW, RegisterWindowMessageW, SM_CXSMICON, SPI_GETCLIENTAREAANIMATION,
+    SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_SHOWWINDOW, SW_HIDE, SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS,
+    SendMessageW, SetForegroundWindow, SetTimer, SetWindowPos, ShowWindow, SystemParametersInfoW, TPM_RETURNCMD,
+    TPM_RIGHTBUTTON, TrackPopupMenu, TranslateMessage, WM_APP, WM_LBUTTONUP, WM_POWERBROADCAST, WM_RBUTTONUP,
+    WM_SETTINGCHANGE, WM_TIMER, WM_WTSSESSION_CHANGE, WNDCLASSW, WS_EX_LAYERED, WS_EX_NOACTIVATE,
+    WS_EX_TOOLWINDOW, WS_EX_TOPMOST, WS_EX_TRANSPARENT, WS_POPUP, WTS_SESSION_UNLOCK,
 };
-use windows::core::{PCWSTR, w};
-
-use windows::Win32::System::RemoteDesktop::{NOTIFY_FOR_THIS_SESSION, WTSRegisterSessionNotification};
+use windows::core::{PCSTR, PCWSTR, w};
 
 use crate::autostart;
+use crate::canvas::{self, Canvas};
+use crate::style::{self, Palette, Rgb};
 
 const WM_PANEL: u32 = WM_APP + 1;
 const WM_TRAY: u32 = WM_APP + 2;
 const WM_HINTS: u32 = WM_APP + 3;
-/// Overlay pixels of exactly this colour are see-through (and click-through).
-const TRANSPARENT_KEY: COLORREF = COLORREF(0x00FF_00FF);
 const ID_OPEN: usize = 1;
 const ID_AUTOSTART: usize = 2;
 const ID_QUIT: usize = 3;
+const PANEL_HIDE: usize = 0;
+const PANEL_SHOW: usize = 1;
+const PANEL_HIDE_NOW: usize = 2;
+const TIMER: usize = 1;
+const FRAME_MS: u32 = 15;
 
-const LINE_HEIGHT: i32 = 22;
-const WIDTH: i32 = 460;
-const PADDING: i32 = 12;
+/// What the panel shows: the app, the letters typed so far, and the chords that still match.
+#[derive(Clone)]
+pub struct View {
+    pub app: String,
+    pub typed: String,
+    pub rows: Vec<(String, String)>,
+}
 
 static PANEL: AtomicIsize = AtomicIsize::new(0);
 static OVERLAY: AtomicIsize = AtomicIsize::new(0);
-static HINTS: Mutex<(RECT, Vec<(POINT, String)>)> = Mutex::new((RECT { left: 0, top: 0, right: 0, bottom: 0 }, Vec::new()));
-static LINES: Mutex<Vec<String>> = Mutex::new(Vec::new());
+static TRAY_ICON: AtomicIsize = AtomicIsize::new(0);
+static HINTS: Mutex<(RECT, Vec<(POINT, String)>, String)> =
+    Mutex::new((RECT { left: 0, top: 0, right: 0, bottom: 0 }, Vec::new(), String::new()));
+static VIEW: Mutex<View> = Mutex::new(View { app: String::new(), typed: String::new(), rows: Vec::new() });
 static CHORDS_DIR: OnceLock<PathBuf> = OnceLock::new();
 /// Explorer broadcasts this after it restarts; tray icons must be added again.
 static TASKBAR_CREATED: AtomicU32 = AtomicU32::new(0);
+
+thread_local! {
+    /// What each layered window currently shows, keyed by its handle; GUI thread only.
+    static LAYERS: RefCell<HashMap<isize, Layer>> = RefCell::new(HashMap::new());
+}
+
+struct Layer {
+    canvas: Canvas,
+    at: POINT,
+    anim: Anim,
+}
+
+#[derive(Clone, Copy)]
+enum Anim {
+    Still,
+    In { start: Instant, duration: u32, drop: i32 },
+    Out { start: Instant, duration: u32 },
+}
 
 fn panel() -> Option<HWND> {
     match PANEL.load(Ordering::Acquire) {
@@ -68,27 +99,17 @@ pub fn start(chords_dir: PathBuf) {
     std::thread::spawn(|| unsafe {
         let Ok(module) = GetModuleHandleW(None) else { return };
         let class = w!("chord-panel");
-        let wc = WNDCLASSW {
+        RegisterClassW(&WNDCLASSW {
             lpfnWndProc: Some(wndproc),
             hInstance: module.into(),
             lpszClassName: class,
             ..Default::default()
-        };
-        RegisterClassW(&wc);
-        let Ok(hwnd) = CreateWindowExW(
-            WS_EX_TOOLWINDOW | WS_EX_TOPMOST | WS_EX_NOACTIVATE,
-            class,
-            w!("chord"),
-            WS_POPUP,
-            0,
-            0,
-            WIDTH,
-            LINE_HEIGHT,
-            HWND::default(),
-            HMENU::default(),
-            module,
-            None,
-        ) else {
+        });
+        // Click-through as well, so a mouse chord at the pointer never lands on the panel.
+        let layered = WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_TOOLWINDOW | WS_EX_TOPMOST | WS_EX_NOACTIVATE;
+        let Ok(hwnd) =
+            CreateWindowExW(layered, class, w!("chord"), WS_POPUP, 0, 0, 1, 1, HWND::default(), HMENU::default(), module, None)
+        else {
             return;
         };
         PANEL.store(hwnd.0 as isize, Ordering::Release);
@@ -100,7 +121,7 @@ pub fn start(chords_dir: PathBuf) {
             ..Default::default()
         });
         if let Ok(overlay) = CreateWindowExW(
-            WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_TOOLWINDOW | WS_EX_TOPMOST | WS_EX_NOACTIVATE,
+            layered,
             overlay_class,
             w!("chord hints"),
             WS_POPUP,
@@ -113,7 +134,6 @@ pub fn start(chords_dir: PathBuf) {
             module,
             None,
         ) {
-            let _ = SetLayeredWindowAttributes(overlay, TRANSPARENT_KEY, 0, LWA_COLORKEY);
             OVERLAY.store(overlay.0 as isize, Ordering::Release);
         }
         add_tray(hwnd);
@@ -129,36 +149,30 @@ pub fn start(chords_dir: PathBuf) {
     });
 }
 
-/// Shows the panel with these lines (first line is the header). Safe from any thread.
-pub fn show(lines: Vec<String>) {
-    *LINES.lock().unwrap_or_else(|e| e.into_inner()) = lines;
-    if let Some(hwnd) = panel() {
-        unsafe {
-            let _ = PostMessageW(hwnd, WM_PANEL, WPARAM(1), LPARAM(0));
-        }
-    }
+/// Shows the panel with this view. Safe from any thread.
+pub fn show(view: View) {
+    *VIEW.lock().unwrap_or_else(|e| e.into_inner()) = view;
+    post(WM_PANEL, PANEL_SHOW);
 }
 
-/// Hides the panel and waits until it's gone (before a hint scan, so it doesn't cover targets).
+/// Hides the panel at once and waits until it's gone (before a hint scan, so it doesn't cover targets).
 pub fn hide_now() {
     if let Some(hwnd) = panel() {
         unsafe {
-            SendMessageW(hwnd, WM_PANEL, WPARAM(0), LPARAM(0));
+            SendMessageW(hwnd, WM_PANEL, WPARAM(PANEL_HIDE_NOW), LPARAM(0));
         }
     }
 }
 
+/// Fades the panel out.
 pub fn hide() {
-    if let Some(hwnd) = panel() {
-        unsafe {
-            let _ = PostMessageW(hwnd, WM_PANEL, WPARAM(0), LPARAM(0));
-        }
-    }
+    post(WM_PANEL, PANEL_HIDE);
 }
 
-/// Shows hint labels at these screen points over `area` (the target window). Safe from any thread.
-pub fn show_hints(area: RECT, labels: Vec<(POINT, String)>) {
-    *HINTS.lock().unwrap_or_else(|e| e.into_inner()) = (area, labels);
+/// Shows hint labels at these screen points over `area` (the target window); `typed` is the part
+/// of every label already typed. Safe from any thread.
+pub fn show_hints(area: RECT, labels: Vec<(POINT, String)>, typed: &str) {
+    *HINTS.lock().unwrap_or_else(|e| e.into_inner()) = (area, labels, typed.to_string());
     post(WM_HINTS, 1);
 }
 
@@ -181,11 +195,6 @@ fn overlay() -> Option<HWND> {
     }
 }
 
-/// Scales a 96-DPI size to the window's monitor.
-fn px(hwnd: HWND, value: i32) -> i32 {
-    value * unsafe { GetDpiForWindow(hwnd) }.max(96) as i32 / 96
-}
-
 /// Removes the tray icon; call before exiting so no dead icon stays behind.
 pub fn remove_tray() {
     if let Some(hwnd) = panel() {
@@ -196,13 +205,17 @@ pub fn remove_tray() {
 }
 
 fn tray_data(hwnd: HWND) -> NOTIFYICONDATAW {
+    let icon = match TRAY_ICON.load(Ordering::Acquire) {
+        0 => unsafe { LoadIconW(None, IDI_APPLICATION).unwrap_or_default() },
+        h => HICON(h as *mut _),
+    };
     let mut data = NOTIFYICONDATAW {
         cbSize: size_of::<NOTIFYICONDATAW>() as u32,
         hWnd: hwnd,
         uID: 1,
         uFlags: NIF_ICON | NIF_MESSAGE | NIF_TIP,
         uCallbackMessage: WM_TRAY,
-        hIcon: unsafe { LoadIconW(None, IDI_APPLICATION).unwrap_or_default() },
+        hIcon: icon,
         ..Default::default()
     };
     for (dst, src) in data.szTip.iter_mut().zip("chord".encode_utf16()) {
@@ -212,8 +225,29 @@ fn tray_data(hwnd: HWND) -> NOTIFYICONDATAW {
 }
 
 fn add_tray(hwnd: HWND) {
+    refresh_tray_icon();
     unsafe {
         let _ = Shell_NotifyIconW(NIM_ADD, &tray_data(hwnd));
+    }
+}
+
+/// A ⌘ glyph in the taskbar's text colour, like a macOS menu-bar template icon.
+fn refresh_tray_icon() {
+    let size = unsafe { GetSystemMetrics(SM_CXSMICON) }.max(16);
+    let color = if light_theme(w!("SystemUsesLightTheme")) { Rgb(0, 0, 0) } else { style::WHITE };
+    let Some(mut canvas) = Canvas::new(size, size) else { return };
+    let font = canvas::font(&["Segoe UI Symbol"], size, 400, true);
+    canvas.glyph(RECT { left: 0, top: 0, right: size, bottom: size }, "\u{2318}", font, color, DT_CENTER | DT_VCENTER);
+    unsafe {
+        let _ = DeleteObject(font);
+    }
+    if let Some(icon) = canvas.into_icon() {
+        let old = TRAY_ICON.swap(icon.0 as isize, Ordering::AcqRel);
+        if old != 0 {
+            unsafe {
+                let _ = DestroyIcon(HICON(old as *mut _));
+            }
+        }
     }
 }
 
@@ -224,7 +258,27 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
     }
     match msg {
         WM_PANEL => {
-            if wparam.0 == 1 { place_and_show(hwnd) } else { unsafe { let _ = ShowWindow(hwnd, SW_HIDE); } }
+            match wparam.0 {
+                PANEL_SHOW => {
+                    if let Some((canvas, at)) = render_panel() {
+                        layer_show(hwnd, canvas, at, style::APPEAR_MS, style::APPEAR_DROP);
+                    }
+                }
+                PANEL_HIDE => layer_hide(hwnd, style::DISAPPEAR_MS),
+                _ => layer_hide_now(hwnd),
+            }
+            LRESULT(0)
+        }
+        WM_TIMER => {
+            layer_tick(hwnd);
+            LRESULT(0)
+        }
+        WM_SETTINGCHANGE => {
+            // Light/dark switches arrive here; the panel reads the theme each time it is shown.
+            refresh_tray_icon();
+            unsafe {
+                let _ = Shell_NotifyIconW(NIM_MODIFY, &tray_data(hwnd));
+            }
             LRESULT(0)
         }
         WM_WTSSESSION_CHANGE if wparam.0 as u32 == WTS_SESSION_UNLOCK => {
@@ -235,30 +289,14 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
             crate::win::reset_hook();
             LRESULT(1)
         }
-        WM_PAINT => {
-            paint(hwnd);
-            LRESULT(0)
-        }
         WM_HINTS => {
             if let Some(overlay) = overlay() {
                 if wparam.0 == 1 {
-                    let area = HINTS.lock().unwrap_or_else(|e| e.into_inner()).0;
-                    unsafe {
-                        let _ = SetWindowPos(
-                            overlay,
-                            HWND_TOPMOST,
-                            area.left,
-                            area.top,
-                            area.right - area.left,
-                            area.bottom - area.top,
-                            SWP_NOACTIVATE | SWP_SHOWWINDOW,
-                        );
-                        let _ = InvalidateRect(overlay, None, true);
+                    if let Some((canvas, at)) = render_hints() {
+                        layer_show(overlay, canvas, at, style::HINTS_APPEAR_MS, 0);
                     }
                 } else {
-                    unsafe {
-                        let _ = ShowWindow(overlay, SW_HIDE);
-                    }
+                    layer_hide_now(overlay);
                 }
             }
             LRESULT(0)
@@ -274,101 +312,307 @@ unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: 
     }
 }
 
-/// Left side of the monitor the user is working on, tall enough for the lines.
-fn place_and_show(hwnd: HWND) {
-    let count = LINES.lock().unwrap_or_else(|e| e.into_inner()).len() as i32;
-    unsafe {
-        let monitor = MonitorFromWindow(GetForegroundWindow(), MONITOR_DEFAULTTONEAREST);
-        let mut info = MONITORINFO { cbSize: size_of::<MONITORINFO>() as u32, ..Default::default() };
-        let _ = GetMonitorInfoW(monitor, &mut info);
-        let work = info.rcWork;
-        let (line, pad) = (px(hwnd, LINE_HEIGHT), px(hwnd, PADDING));
-        let max_height = (work.bottom - work.top - 2 * pad).max(line);
-        let height = (count * line + 2 * pad).min(max_height);
-        let _ = SetWindowPos(
-            hwnd,
-            HWND_TOPMOST,
-            work.left + pad,
-            work.top + pad,
-            px(hwnd, WIDTH),
-            height,
-            SWP_NOACTIVATE | SWP_SHOWWINDOW,
-        );
-        let _ = InvalidateRect(hwnd, None, true);
-    }
-}
-
-fn paint(hwnd: HWND) {
-    let lines = LINES.lock().unwrap_or_else(|e| e.into_inner()).clone();
-    unsafe {
-        let mut ps = PAINTSTRUCT::default();
-        let hdc = BeginPaint(hwnd, &mut ps);
-        let background = CreateSolidBrush(COLORREF(0x0030_2A28));
-        FillRect(hdc, &ps.rcPaint, background);
-        let (line, pad, width) = (px(hwnd, LINE_HEIGHT), px(hwnd, PADDING), px(hwnd, WIDTH));
-        let font: HFONT = CreateFontW(px(hwnd, 18), 0, 0, 0, 400, 0, 0, 0, 0, 0, 0, 0, 0, w!("Consolas"));
-        let previous_font = SelectObject(hdc, font);
-        SetBkMode(hdc, TRANSPARENT);
-        for (i, text_line) in lines.iter().enumerate() {
-            // Header in accent colour, chord lines in light grey.
-            SetTextColor(hdc, COLORREF(if i == 0 { 0x0066_CCFF } else { 0x00E6_E6E6 }));
-            let mut rect = RECT {
-                left: pad,
-                top: pad + i as i32 * line,
-                right: width - pad,
-                bottom: pad + (i as i32 + 1) * line,
-            };
-            let mut text: Vec<u16> = text_line.encode_utf16().collect();
-            DrawTextW(hdc, &mut text, &mut rect, DT_LEFT | DT_SINGLELINE | DT_NOPREFIX);
-        }
-        // A font still selected into the DC can't be deleted; put the old one back first.
-        SelectObject(hdc, previous_font);
-        let _ = windows::Win32::Graphics::Gdi::DeleteObject(font);
-        let _ = windows::Win32::Graphics::Gdi::DeleteObject(background);
-        let _ = EndPaint(hwnd, &ps);
-    }
-}
-
 unsafe extern "system" fn overlay_proc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
-    if msg == WM_PAINT {
-        paint_hints(hwnd);
+    if msg == WM_TIMER {
+        layer_tick(hwnd);
         return LRESULT(0);
     }
     unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
 }
 
-/// Yellow labels with black text, centred on each target; everything else is see-through.
-fn paint_hints(hwnd: HWND) {
-    let (area, labels) = HINTS.lock().unwrap_or_else(|e| e.into_inner()).clone();
-    unsafe {
-        let mut ps = PAINTSTRUCT::default();
-        let hdc = BeginPaint(hwnd, &mut ps);
-        let clear = CreateSolidBrush(TRANSPARENT_KEY);
-        FillRect(hdc, &ps.rcPaint, clear);
-        let label_brush = CreateSolidBrush(COLORREF(0x0000_D7FF));
-        let font: HFONT = CreateFontW(px(hwnd, 15), 0, 0, 0, 700, 0, 0, 0, 0, 0, 0, 0, 0, w!("Consolas"));
-        let previous_font = SelectObject(hdc, font);
-        SetBkMode(hdc, TRANSPARENT);
-        SetTextColor(hdc, COLORREF(0x0000_0000));
-        let (char_w, h) = (px(hwnd, 9), px(hwnd, 18));
-        for (point, label) in &labels {
-            let w = char_w * label.len() as i32 + px(hwnd, 6);
-            let (x, y) = (point.x - area.left - w / 2, point.y - area.top - h / 2);
-            let mut rect = RECT { left: x, top: y, right: x + w, bottom: y + h };
-            FillRect(hdc, &rect, label_brush);
-            let mut text: Vec<u16> = label.to_uppercase().encode_utf16().collect();
-            DrawTextW(hdc, &mut text, &mut rect, DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX);
+/// Puts `canvas` on screen in `hwnd`, fading in unless it is already showing.
+fn layer_show(hwnd: HWND, canvas: Canvas, at: POINT, appear_ms: u32, drop: i32) {
+    LAYERS.with_borrow_mut(|layers| {
+        let visible = unsafe { IsWindowVisible(hwnd) }.as_bool();
+        let anim = match layers.get(&(hwnd.0 as isize)).map(|l| l.anim) {
+            // Already up (or coming up): just swap the content, so typing never flickers.
+            Some(anim @ (Anim::Still | Anim::In { .. })) if visible => anim,
+            _ if motion() => Anim::In { start: Instant::now(), duration: appear_ms, drop },
+            _ => Anim::Still,
+        };
+        let layer = Layer { canvas, at, anim };
+        present(hwnd, &layer);
+        unsafe {
+            if !visible {
+                let flags = SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW;
+                let _ = SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, flags);
+            }
+            if !matches!(anim, Anim::Still) {
+                SetTimer(hwnd, TIMER, FRAME_MS, None);
+            }
         }
-        // A font still selected into the DC can't be deleted; put the old one back first.
-        SelectObject(hdc, previous_font);
-        let _ = windows::Win32::Graphics::Gdi::DeleteObject(font);
-        let _ = windows::Win32::Graphics::Gdi::DeleteObject(label_brush);
-        let _ = windows::Win32::Graphics::Gdi::DeleteObject(clear);
-        let _ = EndPaint(hwnd, &ps);
+        layers.insert(hwnd.0 as isize, layer);
+    });
+}
+
+fn layer_hide(hwnd: HWND, fade_ms: u32) {
+    let fading = motion()
+        && unsafe { IsWindowVisible(hwnd) }.as_bool()
+        && LAYERS.with_borrow_mut(|layers| match layers.get_mut(&(hwnd.0 as isize)) {
+            Some(layer) => {
+                if !matches!(layer.anim, Anim::Out { .. }) {
+                    layer.anim = Anim::Out { start: Instant::now(), duration: fade_ms };
+                }
+                true
+            }
+            None => false,
+        });
+    if fading {
+        unsafe { SetTimer(hwnd, TIMER, FRAME_MS, None) };
+    } else {
+        layer_hide_now(hwnd);
+    }
+}
+
+fn layer_hide_now(hwnd: HWND) {
+    unsafe {
+        let _ = KillTimer(hwnd, TIMER);
+        let _ = ShowWindow(hwnd, SW_HIDE);
+    }
+    // Drops the canvas: a hint overlay's bitmap is as big as the window it covers.
+    LAYERS.with_borrow_mut(|layers| layers.remove(&(hwnd.0 as isize)));
+}
+
+fn layer_tick(hwnd: HWND) {
+    let finished = LAYERS.with_borrow_mut(|layers| {
+        let layer = layers.get_mut(&(hwnd.0 as isize))?;
+        let done = present(hwnd, layer);
+        if done && matches!(layer.anim, Anim::In { .. }) {
+            layer.anim = Anim::Still;
+        }
+        Some((done, layer.anim))
+    });
+    match finished {
+        Some((true, Anim::Out { .. })) => layer_hide_now(hwnd),
+        Some((false, _)) => {}
+        _ => unsafe {
+            let _ = KillTimer(hwnd, TIMER);
+        },
+    }
+}
+
+/// Draws the layer's current animation frame; true once the animation has ended.
+fn present(hwnd: HWND, layer: &Layer) -> bool {
+    let since = |start: Instant| start.elapsed().as_millis().min(u32::MAX as u128) as u32;
+    let (alpha, offset, done) = match layer.anim {
+        Anim::Still => (255, 0, true),
+        Anim::In { start, duration, drop } => {
+            let (alpha, offset) = style::appear(since(start), duration, drop);
+            (alpha, offset, since(start) >= duration)
+        }
+        Anim::Out { start, duration } => (style::disappear(since(start), duration), 0, since(start) >= duration),
+    };
+    layer.canvas.present(hwnd, POINT { x: layer.at.x, y: layer.at.y + offset }, alpha);
+    done
+}
+
+/// Windows' "Animation effects" setting (off when the user asked for reduced motion).
+fn motion() -> bool {
+    let mut on = BOOL(1);
+    unsafe {
+        let _ = SystemParametersInfoW(
+            SPI_GETCLIENTAREAANIMATION,
+            0,
+            Some(&mut on as *mut _ as *mut _),
+            SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS(0),
+        );
+    }
+    on.as_bool()
+}
+
+/// Reads a Personalize value; true (light) when it's missing, as on older Windows.
+fn light_theme(value: PCWSTR) -> bool {
+    let mut data = 1u32;
+    let mut size = size_of::<u32>() as u32;
+    unsafe {
+        let _ = RegGetValueW(
+            HKEY_CURRENT_USER,
+            w!("Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize"),
+            value,
+            RRF_RT_REG_DWORD,
+            None,
+            Some(&mut data as *mut _ as *mut _),
+            Some(&mut size),
+        );
+    }
+    data != 0
+}
+
+fn palette() -> &'static Palette {
+    if light_theme(w!("AppsUseLightTheme")) { &style::LIGHT } else { &style::DARK }
+}
+
+fn scale(monitor: HMONITOR) -> impl Fn(i32) -> i32 {
+    let (mut x, mut y) = (96u32, 96u32);
+    unsafe {
+        let _ = GetDpiForMonitor(monitor, MDT_EFFECTIVE_DPI, &mut x, &mut y);
+    }
+    let dpi = x.max(96) as i32;
+    move |value| value * dpi / 96
+}
+
+/// Deletes the fonts it made when dropped.
+struct Fonts(Vec<HFONT>);
+
+impl Fonts {
+    fn make(&mut self, faces: &[&str], size: i32, weight: i32) -> HFONT {
+        let font = canvas::font(faces, size, weight, false);
+        self.0.push(font);
+        font
+    }
+}
+
+impl Drop for Fonts {
+    fn drop(&mut self) {
+        for font in &self.0 {
+            unsafe {
+                let _ = DeleteObject(*font);
+            }
+        }
+    }
+}
+
+/// Spotlight layout, centred near the top of the monitor the user is working on: the typed letters
+/// large in a header, then one row per chord with its keys in a keycap and the typed part in accent.
+fn render_panel() -> Option<(Canvas, POINT)> {
+    let view = VIEW.lock().unwrap_or_else(|e| e.into_inner()).clone();
+    let colors = palette();
+    let monitor = unsafe { MonitorFromWindow(GetForegroundWindow(), MONITOR_DEFAULTTONEAREST) };
+    let mut info = MONITORINFO { cbSize: size_of::<MONITORINFO>() as u32, ..Default::default() };
+    unsafe {
+        let _ = GetMonitorInfoW(monitor, &mut info);
+    }
+    let work = info.rcWork;
+    let s = scale(monitor);
+    let (pad, header, row, gap) = (s(style::PANEL_PADDING), s(style::HEADER_HEIGHT), s(style::ROW_HEIGHT), s(6));
+    let width = s(style::PANEL_WIDTH).min(work.right - work.left - 2 * pad);
+    let margin = s(style::SHADOW_BLUR) + s(style::SHADOW_DROP);
+    let top = work.top + (work.bottom - work.top) / 5;
+
+    let room = ((work.bottom - top - margin - header - 2 * gap) / row).max(1) as usize;
+    let mut rows: Vec<(String, String)> = view.rows.clone();
+    let more = rows.len().saturating_sub(room);
+    if more > 0 {
+        rows.truncate(room - 1);
+    }
+    let lines = (rows.len() + usize::from(more > 0)).max(1) as i32;
+    let height = header + 1 + 2 * gap + lines * row;
+
+    let mut canvas = Canvas::new(width + 2 * margin, height + 2 * margin)?;
+    let mut fonts = Fonts(Vec::new());
+    let query = fonts.make(style::UI_FONTS, s(20), 400);
+    let small = fonts.make(style::UI_FONTS, s(12), 400);
+    let body = fonts.make(style::UI_FONTS, s(14), 400);
+    let mono = fonts.make(style::MONO_FONTS, s(13), 600);
+    let symbol = fonts.make(&["Segoe UI Symbol"], s(18), 400);
+
+    let panel = RECT { left: margin, top: margin, right: margin + width, bottom: margin + height };
+    let radius = s(style::PANEL_RADIUS);
+    canvas.shadow(panel, radius, s(style::SHADOW_BLUR), s(style::SHADOW_DROP), colors.shadow);
+    canvas.round_rect(panel, radius, colors.border);
+    let inner = RECT { left: panel.left + 1, top: panel.top + 1, right: panel.right - 1, bottom: panel.bottom - 1 };
+    canvas.round_rect(inner, radius - 1, colors.background);
+
+    let head = RECT { left: panel.left + pad, top: panel.top, right: panel.right - pad, bottom: panel.top + header };
+    let icon_width = s(26);
+    canvas.text(RECT { right: head.left + icon_width, ..head }, "\u{2318}", symbol, colors.secondary, DT_LEFT | DT_VCENTER);
+    let query_area = RECT { left: head.left + icon_width, right: head.left + (head.right - head.left) * 2 / 3, ..head };
+    if view.typed.is_empty() {
+        canvas.text(query_area, "Type a chord", query, colors.secondary, DT_LEFT | DT_VCENTER);
+    } else {
+        canvas.text(query_area, &view.typed, query, colors.text, DT_LEFT | DT_VCENTER | DT_END_ELLIPSIS);
+    }
+    let app_area = RECT { left: query_area.right + pad, ..head };
+    canvas.text(app_area, &view.app, small, colors.secondary, DT_RIGHT | DT_VCENTER | DT_END_ELLIPSIS);
+    let line = panel.top + header;
+    canvas.round_rect(RECT { left: inner.left, top: line, right: inner.right, bottom: line + 1 }, 0, colors.border);
+
+    let key_pad = s(8);
+    let key_width = rows.iter().map(|(chord, _)| canvas.measure(chord, mono)).max().unwrap_or(0) + 2 * key_pad;
+    let mut y = line + 1 + gap;
+    for (chord, name) in &rows {
+        let cell = RECT { left: head.left, top: y, right: head.right, bottom: y + row };
+        let typed = common_prefix(chord, &view.typed);
+        let chord_width = canvas.measure(chord, mono) + 2 * key_pad;
+        let cap = RECT { left: cell.left, top: cell.top + s(4), right: cell.left + chord_width, bottom: cell.bottom - s(4) };
+        canvas.round_rect(cap, s(style::KEYCAP_RADIUS), colors.keycap);
+        let typed_width = canvas.measure(&chord[..typed], mono);
+        let keys = RECT { left: cap.left + key_pad, ..cap };
+        canvas.text(keys, &chord[..typed], mono, colors.accent, DT_LEFT | DT_VCENTER);
+        canvas.text(RECT { left: keys.left + typed_width, ..keys }, &chord[typed..], mono, colors.text, DT_LEFT | DT_VCENTER);
+        let label = RECT { left: cell.left + key_width + s(12), ..cell };
+        canvas.text(label, name, body, colors.text, DT_LEFT | DT_VCENTER | DT_END_ELLIPSIS);
+        y += row;
+    }
+    let cell = RECT { left: head.left, top: y, right: head.right, bottom: y + row };
+    if more > 0 {
+        canvas.text(cell, &format!("{more} more"), small, colors.secondary, DT_LEFT | DT_VCENTER);
+    } else if rows.is_empty() {
+        canvas.text(cell, "No chord starts with these keys", body, colors.secondary, DT_LEFT | DT_VCENTER);
+    }
+
+    let at = POINT { x: work.left + (work.right - work.left - width) / 2 - margin, y: top - margin };
+    Some((canvas, at))
+}
+
+/// Byte length of the longest common prefix of `a` and `b` (chords are ASCII, but stay safe).
+fn common_prefix(a: &str, b: &str) -> usize {
+    a.char_indices().zip(b.chars()).take_while(|((_, x), y)| x == y).last().map_or(0, |((i, c), _)| i + c.len_utf8())
+}
+
+/// Accent-blue capsules with white letters (the already-typed letters dimmed), centred on each target.
+fn render_hints() -> Option<(Canvas, POINT)> {
+    let (area, labels, typed) = HINTS.lock().unwrap_or_else(|e| e.into_inner()).clone();
+    let s = scale(unsafe { MonitorFromRect(&area, MONITOR_DEFAULTTONEAREST) });
+    let colors = palette();
+    let mut canvas = Canvas::new(area.right - area.left, area.bottom - area.top)?;
+    let mut fonts = Fonts(Vec::new());
+    let font = fonts.make(style::UI_FONTS, s(12), 600);
+    let (height, side) = (s(style::HINT_HEIGHT), s(5));
+    let dim = mix(colors.accent, style::WHITE, 0.55);
+    let typed_upper = typed.to_uppercase();
+    for (point, label) in &labels {
+        // Every label shown starts with what was typed (the caller filters them).
+        let label = label.to_uppercase();
+        let rest = &label[typed_upper.len().min(label.len())..];
+        let (done_width, text_width) = (canvas.measure(&typed_upper, font), canvas.measure(&label, font));
+        let width = (text_width + 2 * side).max(height);
+        let (x, y) = (point.x - area.left - width / 2, point.y - area.top - height / 2);
+        let pill = RECT { left: x, top: y, right: x + width, bottom: y + height };
+        canvas.shadow(pill, height / 2, s(4), s(1), 0.35);
+        canvas.round_rect(pill, height / 2, colors.accent);
+        let text = RECT { left: x + (width - text_width) / 2, ..pill };
+        canvas.text(text, &typed_upper, font, dim, DT_LEFT | DT_VCENTER);
+        canvas.text(RECT { left: text.left + done_width, ..text }, rest, font, style::WHITE, DT_LEFT | DT_VCENTER);
+    }
+    Some((canvas, POINT { x: area.left, y: area.top }))
+}
+
+fn mix(a: Rgb, b: Rgb, t: f32) -> Rgb {
+    let m = |x: u8, y: u8| (x as f32 + (y as f32 - x as f32) * t).round() as u8;
+    Rgb(m(a.0, b.0), m(a.1, b.1), m(a.2, b.2))
+}
+
+/// Makes the tray menu follow Windows' light/dark setting. The only way is uxtheme's unnamed
+/// SetPreferredAppMode (ordinal 135, Windows 10 1903+); where it is missing the menu stays light.
+fn theme_menus() {
+    unsafe {
+        let Ok(uxtheme) = LoadLibraryW(w!("uxtheme.dll")) else { return };
+        if let Some(set_mode) = GetProcAddress(uxtheme, PCSTR(135 as *const u8)) {
+            let set_mode: unsafe extern "system" fn(i32) -> i32 = std::mem::transmute(set_mode);
+            const FORCE_DARK: i32 = 2;
+            const FORCE_LIGHT: i32 = 3;
+            set_mode(if light_theme(w!("AppsUseLightTheme")) { FORCE_LIGHT } else { FORCE_DARK });
+        }
+        if let Some(flush) = GetProcAddress(uxtheme, PCSTR(136 as *const u8)) {
+            let flush: unsafe extern "system" fn() = std::mem::transmute(flush);
+            flush();
+        }
     }
 }
 
 fn tray_menu(hwnd: HWND) {
+    theme_menus();
     unsafe {
         let Ok(menu) = CreatePopupMenu() else { return };
         let autostart_flags = if autostart::enabled() { MF_STRING | MF_CHECKED } else { MF_STRING };

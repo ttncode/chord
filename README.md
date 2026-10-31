@@ -2,7 +2,7 @@
 
 Keyboard chords for Windows: hold Caps Lock, hold Space, type a few letters, release Space, and the matching action runs in the app in front. Chords live in TOML files you edit.
 
-While chord mode is on, a panel on the left lists the chords for the app in front and narrows as you type. A tray icon offers "Open chords folder", "Start with Windows" and "Quit". Windows only for now.
+While chord mode is on, a Spotlight-style panel near the top of the screen lists the chords for the app in front and narrows as you type. The look follows macOS: rounded corners, a soft shadow, Apple's system colours, keycaps for the keys, and short fade-in and fade-out animations. It follows Windows' light or dark mode, and the animations turn off when Windows' "Animation effects" setting is off. A tray icon offers "Open chords folder", "Start with Windows" and "Quit". Windows only for now.
 
 Inspired by [KeyChord/Chord](https://github.com/KeyChord/Chord) for macOS. This is an independent implementation; no code is shared.
 
@@ -55,7 +55,7 @@ Each chord has a `name` and exactly one action:
 | `palette` | Opens the command palette (`Ctrl+Shift+P`), waits 0.4 s, types the text, presses Enter. If the palette opens slower, the text lands in your file: use a `shortcut` where one exists | `"Collapse Folders in Explorer"` |
 | `focus` | Brings the app's window to the front (its next window when it's already in front). Optional `launch` runs when it isn't open | `focus = "windowsterminal.exe", launch = "wt"` |
 | `mouse` | `click`, `right-click`, `double-click`, `middle-click`, `scroll-up`, `scroll-down` at the pointer | `mouse = "click"` |
-| `hints` | Yellow labels on every clickable element of the window; type a label, release Space, it's clicked (`click`, `right-click`, `double-click`) | `hints = "click"` |
+| `hints` | Blue labels on every clickable element of the window; type a label, release Space, it's clicked (`click`, `right-click`, `double-click`) | `hints = "click"` |
 | `shell` | Runs the command exactly as written (`cmd /S /C "…"`), without a console window | `'start "" "C:\path\app.exe"'` |
 
 Key names: `ctrl shift alt win`, `a`–`z`, `0`–`9`, `f1`–`f24`, `left right up down home end pageup pagedown insert delete`, `backspace enter esc tab space`, and `` ` - = [ ] \ ; ' , . / ``. Write `+` as `plus`.
@@ -87,7 +87,7 @@ vim.opt.title = true
 
 ## Hint labels
 
-Type `;` in chord mode (keep Space held): yellow labels appear on the buttons, links, tabs and fields of the window in front. Type a label's letters (the list narrows as you type), release Space, and that element is clicked. `Backspace` past the `;` hides the labels.
+Type `;` in chord mode (keep Space held): blue labels appear on the buttons, links, tabs and fields of the window in front. Type a label's letters (the list narrows as you type), release Space, and that element is clicked. `Backspace` past the `;` hides the labels.
 
 - Works through Windows UI Automation, so it covers most apps (Explorer, Settings, Antigravity, Chrome, Office). Custom-drawn apps and games may show few or no labels.
 - In Chrome, Vimium's `f` is faster and more complete for web pages.
@@ -106,7 +106,8 @@ Chords from files:
 - [ ] Write `shorcut` (typo) in one chord: the console names that chord, and the other chords still work.
 
 Panel and tray:
-- [ ] Holding Caps Lock + Space shows the panel at the top left, without taking focus from the app; typing narrows it; releasing Space hides it.
+- [ ] Holding Caps Lock + Space fades the panel in near the top centre, without taking focus from the app; typing narrows it and colours the typed keys blue; releasing Space fades it out.
+- [ ] Switching Windows between light and dark mode changes the panel, the tray icon (⌘) and the tray menu to match.
 - [ ] Tray icon → "Open chords folder" opens the folder; "Start with Windows" toggles a check mark and survives a reboot; "Quit" exits.
 - [ ] Starting a second copy prints "chord is already running".
 

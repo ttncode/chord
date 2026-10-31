@@ -92,14 +92,13 @@ impl Session {
         Self { hwnd, chords: config::available(&files, &exe, &title), files, app: exe, title }
     }
 
-    fn lines(&self, buffer: &str) -> Vec<String> {
-        let header = format!("{}   > {buffer}", self.app);
+    fn view(&self, buffer: &str) -> panel::View {
         let matching = self.chords.iter().filter(|(chord, _)| match chord.split_once('(') {
             // Pattern chords: compare only the literal part before the first `(`.
             Some((prefix, _)) => prefix.starts_with(buffer) || buffer.starts_with(prefix),
             None => chord.starts_with(buffer),
         });
-        std::iter::once(header).chain(matching.map(|(chord, name)| format!("{chord:<6} {name}"))).collect()
+        panel::View { app: self.app.clone(), typed: buffer.to_string(), rows: matching.cloned().collect() }
     }
 
     /// The click kind when `buffer` is exactly a `hints` chord here.
@@ -139,7 +138,7 @@ impl Hints {
 
     fn show(&self, typed: &str) {
         let visible = self.targets.iter().filter(|(_, label)| label.starts_with(typed)).cloned().collect();
-        panel::show_hints(self.area, visible);
+        panel::show_hints(self.area, visible, typed);
     }
 
     fn click(&self, label: &str) {
@@ -183,7 +182,7 @@ pub fn run(chords_dir: PathBuf) {
                 buffer.clear();
                 end_hints(&mut hints);
                 let s = Session::start(&chords_dir);
-                panel::show(s.lines(""));
+                panel::show(s.view(""));
                 session = Some(s);
                 show("");
             }
@@ -209,7 +208,7 @@ pub fn run(chords_dir: PathBuf) {
                         h.show("");
                         hints = Some(h);
                     }
-                    None => panel::show(s.lines(&buffer)),
+                    None => panel::show(s.view(&buffer)),
                 }
             }
             Effect::FireKeep(chord) => {
@@ -221,7 +220,7 @@ pub fn run(chords_dir: PathBuf) {
                     fire(&chords_dir, chord.as_str());
                 }
                 if let Some(s) = &session {
-                    panel::show(s.lines(&buffer));
+                    panel::show(s.view(&buffer));
                 }
                 show(&buffer);
             }
