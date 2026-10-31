@@ -18,7 +18,11 @@ use windows::Win32::UI::Accessibility::{
     UIA_TabControlTypeId, UIA_TableControlTypeId, UIA_TitleBarControlTypeId, UIA_ToolBarControlTypeId,
     UIA_TreeControlTypeId, UIA_WindowControlTypeId,
 };
-use windows::Win32::UI::WindowsAndMessaging::{GA_ROOT, GetAncestor, WindowFromPoint};
+use windows::Win32::Foundation::{BOOL, LPARAM, WPARAM};
+use windows::Win32::UI::WindowsAndMessaging::{
+    EnumChildWindows, GA_ROOT, GetAncestor, GetClassNameW, SMTO_ABORTIFHUNG, SendMessageTimeoutW, WM_GETOBJECT,
+    WindowFromPoint,
+};
 use windows::core::{Result, VARIANT};
 
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -52,6 +56,7 @@ pub fn clickable_rects(hwnd: HWND) -> Result<Vec<(Rect, bool)>> {
         // Safe to repeat: later calls on this thread just return S_FALSE.
         let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
         let uia: IUIAutomation = CoCreateInstance(&CUIAutomation, None, CLSCTX_INPROC_SERVER)?;
+        wake_chromium(hwnd);
         let root = uia.ElementFromHandle(hwnd)?;
         // Chromium/Electron build their accessibility tree lazily on the first query; this wakes it.
         let _ = root.FindAll(TreeScope_Children, &uia.CreateTrueCondition()?);
@@ -134,9 +139,27 @@ pub fn clickable_rects(hwnd: HWND) -> Result<Vec<(Rect, bool)>> {
         let found_dialogs = root.FindAll(TreeScope_Descendants, &open_dialog)?;
         let mut dialogs: Vec<IUIAutomationElement> =
             (0..found_dialogs.Length()?).rev().filter_map(|i| found_dialogs.GetElement(i).ok()).collect();
-        if let Some(focused) = focused_dialog(&uia) {
-            dialogs.insert(0, focused);
+        let focused = focused_dialog(&uia);
+        if let Some(focused) = &focused {
+            dialogs.insert(0, focused.clone());
         }
+        // A modal underneath is covered at its centre by the one on top: those that are not go first.
+        let on_top: Vec<bool> = dialogs.iter().map(|d| hit_at_center(&uia, d)).collect();
+        let mut dialog_log = String::new();
+        if debug {
+            for (d, top) in dialogs.iter().zip(&on_top) {
+                let r = d.CurrentBoundingRectangle().unwrap_or_default();
+                let is_focused = focused.as_ref().is_some_and(|f| uia.CompareElements(f, d).is_ok_and(|b| b.as_bool()));
+                dialog_log += &format!(
+                    "dialog {:?} {:?} focused={is_focused} on_top={top}\n",
+                    (r.left, r.top, r.right, r.bottom),
+                    d.CurrentName().map(|n| n.to_string()).unwrap_or_default()
+                );
+            }
+        }
+        let mut order: Vec<usize> = (0..dialogs.len()).collect();
+        order.sort_by_key(|&i| !on_top[i]);
+        let dialogs: Vec<IUIAutomationElement> = order.into_iter().map(|i| dialogs[i].clone()).collect();
         let mut result = None;
         for dialog in &dialogs {
             let rects = rects_in(dialog)?;
@@ -150,12 +173,51 @@ pub fn clickable_rects(hwnd: HWND) -> Result<Vec<(Rect, bool)>> {
             None => rects_in(&root)?,
         };
         if debug {
-            log += &format!("\n{} dialog(s) open\n\nEVERY ELEMENT (offscreen, enabled, focusable, invokable):\n", dialogs.len());
+            log += &format!("\n{} dialog(s) open:\n{dialog_log}\nEVERY ELEMENT (offscreen, enabled, focusable, invokable):\n", dialogs.len());
             log += &every_element(&uia, &root).unwrap_or_else(|e| format!("could not list: {e}\n"));
             let _ = std::fs::write("hints-debug.txt", log);
             say!("  (debug: wrote hints-debug.txt)");
         }
         Ok(result)
+    }
+}
+
+/// Chromium (Chrome, Electron) drops its page accessibility tree while unused or minimized and
+/// rebuilds it only when asked through the page's own window, not the outer one.
+fn wake_chromium(hwnd: HWND) {
+    unsafe extern "system" fn ask(child: HWND, _: LPARAM) -> BOOL {
+        let mut class = [0u16; 64];
+        let len = unsafe { GetClassNameW(child, &mut class) } as usize;
+        if String::from_utf16_lossy(&class[..len]) == "Chrome_RenderWidgetHostHWND" {
+            const OBJID_CLIENT: isize = -4;
+            const UIA_ROOT_OBJECT_ID: isize = -25;
+            for object in [OBJID_CLIENT, UIA_ROOT_OBJECT_ID] {
+                let _ = unsafe {
+                    SendMessageTimeoutW(child, WM_GETOBJECT, WPARAM(0), LPARAM(object), SMTO_ABORTIFHUNG, 200, None)
+                };
+            }
+        }
+        true.into()
+    }
+    unsafe {
+        let _ = EnumChildWindows(hwnd, Some(ask), LPARAM(0));
+    }
+}
+
+/// True when the element found at `element`'s centre is `element` or inside it: nothing covers it.
+fn hit_at_center(uia: &IUIAutomation, element: &IUIAutomationElement) -> bool {
+    unsafe {
+        let Ok(r) = element.CurrentBoundingRectangle() else { return false };
+        let Some(c) = center(r) else { return false };
+        let (Ok(walker), Ok(mut hit)) = (uia.RawViewWalker(), uia.ElementFromPoint(c)) else { return false };
+        for _ in 0..64 {
+            if uia.CompareElements(&hit, element).is_ok_and(|same| same.as_bool()) {
+                return true;
+            }
+            let Ok(parent) = walker.GetParentElement(&hit) else { return false };
+            hit = parent;
+        }
+        false
     }
 }
 
