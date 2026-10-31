@@ -1,28 +1,59 @@
 #![cfg_attr(not(windows), allow(dead_code))]
 
+/// `println!` that never panics: with `--background` there is no console to write to.
+macro_rules! say {
+    ($($arg:tt)*) => {{
+        use std::io::Write as _;
+        let _ = writeln!(std::io::stdout(), $($arg)*);
+    }};
+}
+
+#[cfg(windows)]
+mod autostart;
 mod config;
 mod keys;
 mod machine;
 #[cfg(windows)]
+mod panel;
+#[cfg(windows)]
 mod win;
 
-/// `--chords <dir>`, default `chords` in the current directory.
-fn chords_dir() -> std::path::PathBuf {
+struct Args {
+    chords_dir: std::path::PathBuf,
+    background: bool,
+}
+
+/// `--chords <dir>` (default `chords` in the current directory), `--background` (no console window).
+fn args() -> Args {
     let mut args = std::env::args().skip(1);
-    let mut dir = "chords".into();
+    let mut parsed = Args { chords_dir: "chords".into(), background: false };
     while let Some(arg) = args.next() {
-        if arg == "--chords" {
-            if let Some(value) = args.next() {
-                dir = value.into();
+        match arg.as_str() {
+            "--chords" => {
+                if let Some(value) = args.next() {
+                    parsed.chords_dir = value.into();
+                }
             }
+            "--background" => parsed.background = true,
+            _ => {}
         }
     }
-    dir
+    parsed
 }
 
 fn main() {
     #[cfg(windows)]
-    win::run(chords_dir());
+    {
+        let args = args();
+        if !win::claim_single_instance() {
+            say!("chord is already running (see the tray icon).");
+            return;
+        }
+        if args.background {
+            win::detach_console();
+        }
+        win::run(args.chords_dir);
+    }
     #[cfg(not(windows))]
-    println!("chord only runs on Windows");
+    say!("chord only runs on Windows");
 }

@@ -111,6 +111,14 @@ pub fn resolve<'a>(files: &'a [ChordFile], exe: &str, title: &str, chord: &str) 
     Some(Resolved { file, chord, shadowed })
 }
 
+/// Every chord usable in this window as `(chord, chord name)`, sorted by chord; each chord's winner per `resolve`.
+pub fn available(files: &[ChordFile], exe: &str, title: &str) -> Vec<(String, String)> {
+    let keys: std::collections::BTreeSet<&String> = files.iter().flat_map(|f| f.chords.keys()).collect();
+    keys.into_iter()
+        .filter_map(|key| resolve(files, exe, title, key).map(|r| (key.clone(), r.chord.name.clone())))
+        .collect()
+}
+
 /// Every `*.toml` directly in `dir`, sorted by file name. A missing directory is an error, not a panic.
 pub fn load_dir(dir: &std::path::Path) -> (Vec<ChordFile>, Vec<String>) {
     let entries = match std::fs::read_dir(dir) {
@@ -317,6 +325,21 @@ mod tests {
     fn unknown_chord_is_none() {
         let files = [file("a.toml", "", "/e")];
         assert!(resolve(&files, "notepad.exe", "", "zz").is_none());
+    }
+
+    #[test]
+    fn available_lists_winning_chords_sorted() {
+        let files = [
+            file("ag.toml", "app = \"code.exe\"", "gd"),
+            file("g.toml", "", "gd"),
+            file("h.toml", "", "/e"),
+            file("other.toml", "app = \"notepad.exe\"", "xx"),
+        ];
+        let list: Vec<(String, String)> = available(&files, "code.exe", "");
+        assert_eq!(
+            list,
+            vec![("/e".to_string(), "h.toml".to_string()), ("gd".to_string(), "ag.toml".to_string())]
+        );
     }
 
     #[test]

@@ -13,10 +13,13 @@ use std::sync::OnceLock;
 use std::sync::mpsc::{SyncSender, sync_channel};
 use std::time::Duration;
 
-use windows::Win32::Foundation::{CloseHandle, HINSTANCE, HWND, LPARAM, LRESULT, WPARAM};
+use windows::Win32::Foundation::{
+    CloseHandle, ERROR_ALREADY_EXISTS, GetLastError, HINSTANCE, HWND, LPARAM, LRESULT, WPARAM,
+};
+use windows::Win32::System::Console::FreeConsole;
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::System::Threading::{
-    GetCurrentThread, OpenProcess, PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION,
+    CreateMutexW, GetCurrentThread, OpenProcess, PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION,
     QueryFullProcessImageNameW, SetThreadPriority, THREAD_PRIORITY_TIME_CRITICAL,
 };
 use windows::Win32::UI::Input::KeyboardAndMouse::{
@@ -28,9 +31,10 @@ use windows::Win32::UI::WindowsAndMessaging::{
     HC_ACTION, HHOOK, KBDLLHOOKSTRUCT, MSG, SetWindowsHookExW, WH_KEYBOARD_LL, WM_KEYDOWN,
     WM_SYSKEYDOWN,
 };
-use windows::core::PWSTR;
+use windows::core::{PWSTR, w};
 
 use crate::config::{self, Action};
+use crate::panel;
 use crate::keys::{Key, parse_shortcut};
 use crate::machine::{Effect, Machine, VK_CAPITAL};
 
@@ -46,26 +50,80 @@ thread_local! {
     static MACHINE: RefCell<Machine> = const { RefCell::new(Machine::new()) };
 }
 
+/// False if another chord process already holds the keyboard hook.
+pub fn claim_single_instance() -> bool {
+    unsafe {
+        // The handle is leaked on purpose: the mutex must live as long as the process.
+        let created = CreateMutexW(None, true, w!("Local\\chord-ttncode-single-instance"));
+        created.is_ok() && GetLastError() != ERROR_ALREADY_EXISTS
+    }
+}
+
+/// Closes the console window when started with `--background` (e.g. from Start with Windows).
+pub fn detach_console() {
+    unsafe {
+        let _ = FreeConsole();
+    }
+}
+
+/// Chords shown in the panel during one chord-mode session, read once when it starts.
+struct Session {
+    app: String,
+    chords: Vec<(String, String)>,
+}
+
+impl Session {
+    fn start(dir: &Path) -> Self {
+        let (exe, title) = foreground();
+        let (files, _) = config::load_dir(dir);
+        Self { chords: config::available(&files, &exe, &title), app: exe }
+    }
+
+    fn lines(&self, buffer: &str) -> Vec<String> {
+        let header = format!("{}   > {buffer}", self.app);
+        let matching = self.chords.iter().filter(|(chord, _)| chord.starts_with(buffer));
+        std::iter::once(header).chain(matching.map(|(chord, name)| format!("{chord:<6} {name}"))).collect()
+    }
+}
+
 pub fn run(chords_dir: PathBuf) {
     let (tx, rx) = sync_channel(64);
     EFFECTS.set(tx).expect("run() called twice");
     std::thread::spawn(hook_thread);
+    panel::start(chords_dir.clone());
 
-    println!("chord running. Chord files: {}", chords_dir.display());
+    say!("chord running. Chord files: {}", chords_dir.display());
     let (files, errors) = config::load_dir(&chords_dir);
     for f in &files {
-        println!("  loaded {} ({} chords)", f.file, f.chords.len());
+        say!("  loaded {} ({} chords)", f.file, f.chords.len());
     }
     print_errors(&errors);
-    println!("  Hold Caps Lock, then hold Space, type a chord, release Space.");
-    println!("  Emergency exit: Ctrl + Space + Esc (or Ctrl+C here).");
+    say!("  Hold Caps Lock, then hold Space, type a chord, release Space.");
+    say!("  Emergency exit: Ctrl + Space + Esc (or Ctrl+C here).");
 
+    let mut session = None;
     for effect in rx {
         match effect {
-            Effect::Enter => show(""),
-            Effect::Show(chord) => show(chord.as_str()),
-            Effect::Cancel => println!("  (cancelled)"),
-            Effect::Fire(chord) => fire(&chords_dir, chord.as_str()),
+            Effect::Enter => {
+                let s = Session::start(&chords_dir);
+                panel::show(s.lines(""));
+                session = Some(s);
+                show("");
+            }
+            Effect::Show(chord) => {
+                if let Some(s) = &session {
+                    panel::show(s.lines(chord.as_str()));
+                }
+                show(chord.as_str());
+            }
+            Effect::Cancel => {
+                panel::hide();
+                say!("  (cancelled)");
+            }
+            Effect::Fire(chord) => {
+                panel::hide();
+                fire(&chords_dir, chord.as_str());
+            }
             Effect::ToggleCaps => send_combo(&CAPS),
             // Toggling twice leaves the state unchanged, and Windows rewrites the light to match it each time.
             Effect::ResyncCapsLight => {
@@ -73,7 +131,8 @@ pub fn run(chords_dir: PathBuf) {
                 send_combo(&CAPS);
             }
             Effect::Quit => {
-                println!("\nemergency exit");
+                say!("\nemergency exit");
+                panel::remove_tray();
                 std::process::exit(0);
             }
         }
@@ -81,29 +140,30 @@ pub fn run(chords_dir: PathBuf) {
 }
 
 fn show(buffer: &str) {
-    print!("\r\x1b[2K[chord] {buffer}");
-    let _ = std::io::stdout().flush();
+    let mut out = std::io::stdout();
+    let _ = write!(out, "\r\x1b[2K[chord] {buffer}");
+    let _ = out.flush();
 }
 
 fn print_errors(errors: &[String]) {
     for e in errors {
-        println!("  ! {e}");
+        say!("  ! {e}");
     }
 }
 
-// shortcut: files are re-read on every fire; switch to a cached, watched config when the Phase 2 panel needs the list while typing.
+// shortcut: files are re-read when chord mode starts and on every fire; cache and watch them if that ever shows up as lag.
 fn fire(dir: &Path, chord: &str) {
     let (exe, title) = foreground();
     let (files, errors) = config::load_dir(dir);
     let Some(found) = config::resolve(&files, &exe, &title, chord) else {
-        println!("  -> no chord '{chord}' for {exe} \"{title}\"");
+        say!("  -> no chord '{chord}' for {exe} \"{title}\"");
         print_errors(&errors);
         return;
     };
-    println!("  -> {} ({exe})", found.chord.name);
+    say!("  -> {} ({exe})", found.chord.name);
     print_errors(&errors);
     if !found.shadowed.is_empty() {
-        println!("  ! '{chord}' is also in {}; {} wins", found.shadowed.join(", "), found.file.file);
+        say!("  ! '{chord}' is also in {}; {} wins", found.shadowed.join(", "), found.file.file);
     }
     run_action(&found.chord.action);
 }
@@ -133,7 +193,7 @@ fn run_action(action: &Action) {
                 .creation_flags(CREATE_NO_WINDOW)
                 .spawn();
             if let Err(e) = spawned {
-                println!("  ! could not run `{command}`: {e}");
+                say!("  ! could not run `{command}`: {e}");
             }
         }
     }
@@ -144,7 +204,7 @@ fn hook_thread() {
         let _ = SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_TIME_CRITICAL);
         let module = GetModuleHandleW(None).expect("GetModuleHandleW");
         if let Err(e) = SetWindowsHookExW(WH_KEYBOARD_LL, Some(hook), HINSTANCE(module.0), 0) {
-            eprintln!("could not install keyboard hook: {e}");
+            say!("could not install keyboard hook: {e}");
             std::process::exit(1);
         }
         // The hook only runs while this thread pumps messages.
