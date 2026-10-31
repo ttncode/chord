@@ -169,8 +169,8 @@ pub fn hide() {
     post(WM_PANEL, PANEL_HIDE);
 }
 
-/// Shows hint labels at these screen points over `area` (the target window); `typed` is the part
-/// of every label already typed. Safe from any thread.
+/// Shows hint labels with their top-left corner at these screen points over `area` (the target window);
+/// `typed` is the part of every label already typed. Safe from any thread.
 pub fn show_hints(area: RECT, labels: Vec<(POINT, String)>, typed: &str) {
     *HINTS.lock().unwrap_or_else(|e| e.into_inner()) = (area, labels, typed.to_string());
     post(WM_HINTS, 1);
@@ -560,7 +560,7 @@ fn common_prefix(a: &str, b: &str) -> usize {
     a.char_indices().zip(b.chars()).take_while(|((_, x), y)| x == y).last().map_or(0, |((i, c), _)| i + c.len_utf8())
 }
 
-/// Accent-blue capsules with white letters (the already-typed letters dimmed), centred on each target.
+/// Accent-blue capsules with white letters (the already-typed letters dimmed) at each target's corner.
 fn render_hints() -> Option<(Canvas, POINT)> {
     let (area, labels, typed) = HINTS.lock().unwrap_or_else(|e| e.into_inner()).clone();
     let s = scale(unsafe { MonitorFromRect(&area, MONITOR_DEFAULTTONEAREST) });
@@ -577,7 +577,7 @@ fn render_hints() -> Option<(Canvas, POINT)> {
         let rest = &label[typed_upper.len().min(label.len())..];
         let (done_width, text_width) = (canvas.measure(&typed_upper, font), canvas.measure(&label, font));
         let width = (text_width + 2 * side).max(height);
-        let (x, y) = (point.x - area.left - width / 2, point.y - area.top - height / 2);
+        let (x, y) = ((point.x - area.left).max(0), (point.y - area.top).max(0));
         let pill = RECT { left: x, top: y, right: x + width, bottom: y + height };
         canvas.shadow(pill, height / 2, s(4), s(1), 0.35);
         canvas.round_rect(pill, height / 2, colors.accent);

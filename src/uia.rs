@@ -13,13 +13,13 @@ use windows::Win32::UI::Accessibility::{
 use windows::Win32::UI::WindowsAndMessaging::{GA_ROOT, GetAncestor, WindowFromPoint};
 use windows::core::{Result, VARIANT};
 
+use crate::hints::Rect;
+
 /// More labels than this are unreadable; mousemaster caps similarly.
 const MAX_ELEMENTS: i32 = 300;
-/// Element centres closer than this (pixels) get one label.
-const MIN_GAP: i32 = 6;
 
-/// Centres (physical screen pixels) of clickable, visible elements in `hwnd`, top-left first.
-pub fn clickable_points(hwnd: HWND) -> Result<Vec<POINT>> {
+/// Rectangles (physical screen pixels) of clickable elements in `hwnd` that no other window covers.
+pub fn clickable_rects(hwnd: HWND) -> Result<Vec<Rect>> {
     unsafe {
         // Safe to repeat: later calls on this thread just return S_FALSE.
         let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
@@ -49,21 +49,17 @@ pub fn clickable_points(hwnd: HWND) -> Result<Vec<POINT>> {
 
         let found = root.FindAllBuildCache(TreeScope_Descendants, &condition, &cache)?;
         let target_root = GetAncestor(hwnd, GA_ROOT);
-        let mut points: Vec<POINT> = Vec::new();
+        let mut rects: Vec<Rect> = Vec::new();
         for i in 0..found.Length()?.min(MAX_ELEMENTS) {
             let Ok(rect) = found.GetElement(i).and_then(|e| e.CachedBoundingRectangle()) else { continue };
+            // Covered by another window (menus, overlays, other apps): not clickable here.
             if let Some(center) = center(rect) {
-                // Covered by another window (menus, overlays, other apps): not clickable here.
-                if GetAncestor(WindowFromPoint(center), GA_ROOT) != target_root {
-                    continue;
-                }
-                if points.iter().all(|p| (p.x - center.x).abs() > MIN_GAP || (p.y - center.y).abs() > MIN_GAP) {
-                    points.push(center);
+                if GetAncestor(WindowFromPoint(center), GA_ROOT) == target_root {
+                    rects.push((rect.left, rect.top, rect.right, rect.bottom));
                 }
             }
         }
-        points.sort_by_key(|p| (p.y, p.x));
-        Ok(points)
+        Ok(rects)
     }
 }
 

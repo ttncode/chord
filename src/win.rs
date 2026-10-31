@@ -115,13 +115,13 @@ struct Hints {
     key: String,
     kind: Mouse,
     area: RECT,
-    targets: Vec<(POINT, String)>,
+    targets: Vec<(hints::Rect, String)>,
 }
 
 impl Hints {
     fn scan(hwnd: HWND, key: &str, kind: Mouse) -> Option<Self> {
-        let points = match uia::clickable_points(hwnd) {
-            Ok(points) => points,
+        let rects = match uia::clickable_rects(hwnd) {
+            Ok(rects) => hints::targets(rects),
             Err(e) => {
                 say!("  ! could not read this window's buttons: {e}");
                 return None;
@@ -131,21 +131,27 @@ impl Hints {
         unsafe {
             let _ = GetWindowRect(hwnd, &mut area);
         }
-        let labels = hints::labels(points.len());
-        let targets = points.into_iter().zip(labels).collect::<Vec<_>>();
+        let labels = hints::labels(rects.len());
+        let targets = rects.into_iter().zip(labels).collect::<Vec<_>>();
         Some(Self { key: key.to_string(), kind, area, targets })
     }
 
     fn show(&self, typed: &str) {
-        let visible = self.targets.iter().filter(|(_, label)| label.starts_with(typed)).cloned().collect();
+        // Labels sit on each element's top-left corner, so they don't hide its text.
+        let visible = self
+            .targets
+            .iter()
+            .filter(|(_, label)| label.starts_with(typed))
+            .map(|(r, label)| (POINT { x: r.0, y: r.1 }, label.clone()))
+            .collect();
         panel::show_hints(self.area, visible, typed);
     }
 
     fn click(&self, label: &str) {
         match self.targets.iter().find(|(_, l)| l == label) {
-            Some((point, _)) => {
+            Some((r, _)) => {
                 unsafe {
-                    let _ = SetCursorPos(point.x, point.y);
+                    let _ = SetCursorPos((r.0 + r.2) / 2, (r.1 + r.3) / 2);
                 }
                 without_shift(|| window::mouse(self.kind));
             }
