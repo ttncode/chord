@@ -93,7 +93,8 @@ To click several things in a row, keep Space held: tap `Caps Lock` (or hold `Shi
 
 - Works through Windows UI Automation, so it covers most apps (Explorer, Settings, Antigravity, Chrome, Office). Custom-drawn apps and games may show few or no labels.
 - In Chrome, Vimium's `f` is faster and more complete for web pages.
-- The first `;` in an Electron app (Antigravity, Slack) can come back empty while the app builds its accessibility tree; try again.
+- Electron apps (Antigravity, Postman, Slack) build their accessibility tree only when first asked, so chord reads twice when the first read is empty.
+- When a modal dialog is open, only its contents get labels.
 
 ## Manual test checklist
 

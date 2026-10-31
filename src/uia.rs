@@ -8,7 +8,7 @@ use windows::Win32::UI::Accessibility::{
     TreeScope_Descendants, UIA_BoundingRectanglePropertyId, UIA_IsEnabledPropertyId,
     UIA_IsExpandCollapsePatternAvailablePropertyId, UIA_IsInvokePatternAvailablePropertyId,
     UIA_IsKeyboardFocusablePropertyId, UIA_IsOffscreenPropertyId, UIA_IsSelectionItemPatternAvailablePropertyId,
-    UIA_IsTogglePatternAvailablePropertyId, UIA_PROPERTY_ID, UIA_ControlTypePropertyId, UIA_DataGridControlTypeId,
+    UIA_IsDialogPropertyId, UIA_IsTogglePatternAvailablePropertyId, UIA_PROPERTY_ID, UIA_ControlTypePropertyId, UIA_DataGridControlTypeId,
     UIA_DocumentControlTypeId, UIA_GroupControlTypeId, UIA_HeaderControlTypeId, UIA_ListControlTypeId,
     UIA_MenuBarControlTypeId, UIA_PaneControlTypeId, UIA_ScrollBarControlTypeId, UIA_StatusBarControlTypeId,
     UIA_TabControlTypeId, UIA_TableControlTypeId, UIA_TitleBarControlTypeId, UIA_ToolBarControlTypeId,
@@ -74,7 +74,15 @@ pub fn clickable_rects(hwnd: HWND) -> Result<Vec<Rect>> {
         let condition =
             uia.CreateAndCondition(&uia.CreateAndCondition(&visible, &clickable)?, &uia.CreateNotCondition(&container)?)?;
 
-        let found = root.FindAllBuildCache(TreeScope_Descendants, &condition, &cache)?;
+        // An open modal (a web dialog, or one an app draws inside its window): only its contents count.
+        let open_dialog = uia.CreateAndCondition(&is(UIA_IsDialogPropertyId, true)?, &is(UIA_IsOffscreenPropertyId, false)?)?;
+        let dialogs = root.FindAll(TreeScope_Descendants, &open_dialog)?;
+        let scope = match dialogs.Length()? {
+            0 => root,
+            // The last one in the tree is the one on top.
+            n => dialogs.GetElement(n - 1)?,
+        };
+        let found = scope.FindAllBuildCache(TreeScope_Descendants, &condition, &cache)?;
         let target_root = GetAncestor(hwnd, GA_ROOT);
         let mut rects: Vec<Rect> = Vec::new();
         for i in 0..found.Length()?.min(MAX_ELEMENTS) {

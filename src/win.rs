@@ -115,8 +115,13 @@ struct Hints {
 
 impl Hints {
     fn scan(hwnd: HWND, key: &str, kind: Mouse) -> Option<Self> {
-        let rects = match uia::clickable_rects(hwnd) {
-            Ok(rects) => hints::targets(rects),
+        let read = || uia::clickable_rects(hwnd).map(hints::targets);
+        // Electron apps (Postman, Antigravity) build their accessibility tree only once asked: the
+        // first read can be empty, the next one a moment later is not.
+        let first = read();
+        let again = matches!(&first, Ok(rects) if rects.is_empty());
+        let rects = match if again { std::thread::sleep(Duration::from_millis(300)); read() } else { first } {
+            Ok(rects) => rects,
             Err(e) => {
                 say!("  ! could not read this window's buttons: {e}");
                 return None;
