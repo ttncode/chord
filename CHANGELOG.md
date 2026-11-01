@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/).
 
+## [0.2.1] - 2026-11-02
+
+### Fixed
+
+- Pressing Caps Lock while a Remote Desktop window was in front could hang the PC for minutes (CPU at 100%, screen flickering): the Remote Desktop client re-sends Caps Lock to keep the light in sync, and chord treated each one as a new press. chord now ignores Caps Lock sent by other programs, and leaves Caps Lock alone while a Remote Desktop (`mstsc`, `msrdc`) or VM (Hyper-V, VMware, VirtualBox) window is in front, so chords reach the chord on the remote PC.
+
 ## [0.2.0] - 2026-11-01
 
 ### Added
@@ -37,5 +43,6 @@ First release. Windows x64; tested on Windows 10 22H2.
 - Elements an app draws without telling UI Automation (custom-drawn apps, Postman's ☰ and window buttons) get no label.
 - `chord.exe` is not signed; Windows SmartScreen may warn on first run.
 
+[0.2.1]: https://github.com/ttncode/chord/releases/tag/v0.2.1
 [0.2.0]: https://github.com/ttncode/chord/releases/tag/v0.2.0
 [0.1.0]: https://github.com/ttncode/chord/releases/tag/v0.1.0
