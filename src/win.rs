@@ -36,7 +36,7 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     CallNextHookEx, GetForegroundWindow, GetWindowRect, SetCursorPos, GetMessageW, GetWindowTextW, GetWindowThreadProcessId,
-    HC_ACTION, HHOOK, KBDLLHOOKSTRUCT, MSG, PostThreadMessageW, SetTimer, SetWindowsHookExW,
+    HC_ACTION, HHOOK, KBDLLHOOKSTRUCT, LLKHF_INJECTED, MSG, PostThreadMessageW, SetTimer, SetWindowsHookExW,
     UnhookWindowsHookEx, WH_KEYBOARD_LL, WM_APP, WM_KEYDOWN, WM_SYSKEYDOWN, WM_TIMER,
 };
 use windows::core::{HSTRING, PWSTR, w};
@@ -475,8 +475,13 @@ fn hook_thread() {
 unsafe extern "system" fn hook(code: i32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
     if code == HC_ACTION as i32 {
         let event = unsafe { &*(lparam.0 as *const KBDLLHOOKSTRUCT) };
-        if event.dwExtraInfo != TAG {
-            let down = matches!(wparam.0 as u32, WM_KEYDOWN | WM_SYSKEYDOWN);
+        let down = matches!(wparam.0 as u32, WM_KEYDOWN | WM_SYSKEYDOWN);
+        // Remote desktop and VM clients sync Caps Lock by injecting it: handling that would toggle
+        // Caps again, they sync again, and the loop floods input until the machine hangs.
+        let leave_caps = event.vkCode == VK_CAPITAL as u32
+            && ((event.flags & LLKHF_INJECTED).0 != 0
+                || (down && exe_of(unsafe { GetForegroundWindow() }).is_some_and(|e| config::remote_client(&e))));
+        if event.dwExtraInfo != TAG && !leave_caps {
             // A panic must not unwind into Windows; on panic the key just passes through.
             let decision = catch_unwind(AssertUnwindSafe(|| {
                 MACHINE.with_borrow_mut(|m| {

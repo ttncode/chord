@@ -123,6 +123,7 @@ The panel and labels follow macOS: rounded corners, a soft shadow, Apple's syste
 ## Known limits
 
 - Chords do nothing while an app running as administrator is in front, and nothing works on the lock screen or UAC prompts.
+- While a Remote Desktop or VM window is in front, chord on this PC leaves Caps Lock to it: run chord on the remote PC for chords there.
 - Custom-drawn apps and games may show few or no labels; Postman's ☰ menu and window buttons are among them.
 - chord has no window of its own. Started from a terminal, it prints what each chord does there; don't select text in that terminal while chord runs, or Windows pauses its output (QuickEdit) until you press Esc.
 
@@ -182,6 +183,7 @@ Robustness:
 Caps Lock:
 - [ ] Tapping Caps Lock alone still turns it on and off.
 - [ ] After any chord, the Caps Lock light and the actual state match what they were before.
+- [ ] With a Remote Desktop (`mstsc`) window in front, Caps Lock toggles once, the PC stays responsive, and chords reach the chord running on the remote PC.
 
 Vietnamese Telex (switch to it with `Win + Space`):
 - [ ] Outside chord mode, `Vieejt Nam` still becomes `Việt Nam`.

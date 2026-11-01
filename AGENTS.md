@@ -41,7 +41,7 @@ Three threads: the **hook thread** runs the low-level keyboard hook and the pure
 
 - Logic that can be tested without a keyboard goes in a pure module with unit tests; Windows calls stay in the `cfg(windows)` modules. `main.rs` carries `#![cfg_attr(not(windows), allow(dead_code))]` so `cargo test` runs on Linux.
 - The hook callback must never block: it decides block/pass and hands effects over with `try_send`. Anything slow belongs to the main thread.
-- Every injected key or mouse event carries `dwExtraInfo = TAG` (`src/win.rs:55`); the hook ignores only those, not all injected input.
+- Every injected key or mouse event carries `dwExtraInfo = TAG` (`src/win.rs:55`); the hook ignores only those, plus any injected Caps Lock (remote desktop and VM clients inject it to sync the light; reacting loops forever).
 - Print with `say!` (never `println!`): chord is a GUI-subsystem app and often has no console. Messages a user must see without a terminal go through `win::message`.
 - Bug fixes start with a failing test when the logic is in a pure module.
 

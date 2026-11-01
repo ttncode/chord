@@ -175,6 +175,13 @@ pub const STARTERS: [(&str, &str); 4] = [
 
 /// Where chord files live when `--chords` isn't given: a `chords` folder in the current folder
 /// (portable zip, development) wins; otherwise the per-user folder, e.g. `%APPDATA%\chord\chords`.
+/// Remote desktop and VM windows: their own machine runs its own chord, and they sync Caps Lock
+/// back to this one, so chord here must leave Caps alone while they are in front.
+pub fn remote_client(exe: &str) -> bool {
+    // shortcut: fixed list of the common clients; make it a chord-file setting if users need others.
+    ["mstsc.exe", "msrdc.exe", "vmconnect.exe", "vmware.exe", "vmplayer.exe", "virtualboxvm.exe"].contains(&exe)
+}
+
 pub fn default_dir(local: &std::path::Path, per_user: Option<std::path::PathBuf>) -> std::path::PathBuf {
     match per_user {
         Some(dir) if !local.is_dir() => dir,
@@ -629,5 +636,15 @@ mod tests {
         assert_eq!(files.len(), 4);
         let gd = resolve(&files, "antigravity ide.exe", "", "gd").unwrap();
         assert_eq!(gd.chord.action, Action::Shortcut(parse_shortcut("f12").unwrap()));
+    }
+
+    #[test]
+    fn remote_clients_are_recognised_by_exe() {
+        for exe in ["mstsc.exe", "msrdc.exe", "vmconnect.exe", "vmware.exe", "vmplayer.exe", "virtualboxvm.exe"] {
+            assert!(remote_client(exe), "{exe}");
+        }
+        for exe in ["", "explorer.exe", "chrome.exe", "mstsc.exe.bak"] {
+            assert!(!remote_client(exe), "{exe}");
+        }
     }
 }
