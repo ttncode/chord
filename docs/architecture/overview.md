@@ -54,12 +54,12 @@ flowchart LR
 
 | Container | Path | Run locally | Deployed to |
 | --- | --- | --- | --- |
-| `chord.exe` | `src/main.rs` | `cargo run --release` | GitHub Releases zip |
+| `chord.exe` | `src/main.rs` | `cargo run --release` | GitHub Releases: installer and zip |
 
 | Thread | Entry | Job |
 | --- | --- | --- |
-| Hook | `src/win.rs:425` | message loop for the keyboard hook; reinstalls it every 5 minutes |
-| Main | `src/win.rs:175` | effect loop: panel updates, chord lookup, actions, label scans |
+| Hook | `src/win.rs:454` | message loop for the keyboard hook; reinstalls it every 5 minutes |
+| Main | `src/win.rs:204` | effect loop: panel updates, chord lookup, actions, label scans |
 | GUI | `src/panel.rs:97` | panel and hint overlay windows, tray icon, unlock/resume events |
 
 ## Solution strategy
@@ -67,13 +67,18 @@ flowchart LR
 | Decision area | Choice | Evidence |
 | --- | --- | --- |
 | Language and UI | Rust, raw Win32 via the `windows` crate; no web view | `Cargo.toml` |
-| Input capture | low-level keyboard hook; the callback only decides and hands off | `src/win.rs:446` |
+| Input capture | low-level keyboard hook; the callback only decides and hands off | `src/win.rs:475` |
 | Key logic | pure state machine with timestamps, unit-tested off Windows | `src/machine.rs:116` |
-| Configuration | TOML files re-read on every chord, no restart | `src/win.rs:324` |
+| Configuration | TOML files re-read on every chord, no restart | `src/win.rs:353` |
 | Clicking without a mouse | UI Automation scan + Vimium-style prefix-free labels | `src/uia.rs:54`, `src/hints.rs:40` |
 | Drawing | layered windows with per-pixel alpha (antialiased corners, shadows, fades) | `src/canvas.rs:158` |
-| Single instance | named mutex `Local\chord-ttncode-single-instance` | `src/win.rs:63` |
+| Single instance | named mutex `Local\chord-ttncode-single-instance` | `src/win.rs:68` |
 
 ## Deployment
 
-A release is `chord.exe` built with `cargo build --release` on Windows, zipped with the `chords` folder, and attached to a GitHub Release tagged `vX.Y.Z`. There is no CI; the build is manual.
+Pushing a tag `v<version>` that matches `Cargo.toml` runs `.github/workflows/release.yml` on a Windows runner: tests, an MSVC release build with the icon embedded (`build.rs`), the Inno Setup installer (`installer/chord.iss`), a portable zip, `SHA256SUMS.txt`, and a GitHub Release with the version's `CHANGELOG.md` section as notes.
+
+| Artifact | Installs to | Chord files |
+| --- | --- | --- |
+| `chord-setup-<version>.exe` | `%LOCALAPPDATA%\Programs\chord`, per user; Start menu; optional HKCU Run entry | `%APPDATA%\chord\chords` |
+| `chord-v<version>-windows-x64.zip` | wherever it is unzipped | its own `chords` folder |

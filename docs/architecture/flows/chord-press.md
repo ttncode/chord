@@ -1,6 +1,6 @@
 # Flow: chord press
 
-Entrypoint: `src/win.rs:446`
+Entrypoint: `src/win.rs:475`
 
 ```mermaid
 sequenceDiagram
@@ -33,24 +33,24 @@ sequenceDiagram
 
 | # | Step | Where |
 | - | ---- | ----- |
-| 1 | The hook skips events tagged with `TAG` and passes the rest to the machine, inside `catch_unwind` | `src/win.rs:452` |
+| 1 | The hook skips events tagged with `TAG` and passes the rest to the machine, inside `catch_unwind` | `src/win.rs:481` |
 | 2 | The machine updates key state, recovers lost releases (1.5 s stale, 15 s idle), and returns block/pass plus an effect | `src/machine.rs:116` |
-| 3 | The hook hands the effect over without blocking | `src/win.rs:464` |
+| 3 | The hook hands the effect over without blocking | `src/win.rs:493` |
 | 4 | Caps Lock held + Space pressed enters chord mode | `src/machine.rs:169` |
-| 5 | `Enter` reads the chord files once for the panel and shows it | `src/win.rs:204`, `src/win.rs:87` |
-| 6 | Each letter sends `Show`; the panel narrows to matching chords | `src/win.rs:209`, `src/win.rs:93` |
-| 7 | Space up sends `Fire` with the typed chord; a hint chord goes to the label flow instead | `src/machine.rs:242`, `src/win.rs:263` |
-| 8 | `fire` re-reads the files and resolves the chord for the app and window title in front | `src/win.rs:324`, `src/config.rs:116` |
-| 9 | The action runs with Shift lifted if held | `src/win.rs:340`, `src/win.rs:386` |
-| 10 | Caps Lock up after a chord resyncs the Caps Lock light | `src/win.rs:491` |
+| 5 | `Enter` reads the chord files once for the panel and shows it | `src/win.rs:233`, `src/win.rs:116` |
+| 6 | Each letter sends `Show`; the panel narrows to matching chords | `src/win.rs:238`, `src/win.rs:122` |
+| 7 | Space up sends `Fire` with the typed chord; a hint chord goes to the label flow instead | `src/machine.rs:242`, `src/win.rs:292` |
+| 8 | `fire` re-reads the files and resolves the chord for the app and window title in front | `src/win.rs:353`, `src/config.rs:116` |
+| 9 | The action runs with Shift lifted if held | `src/win.rs:369`, `src/win.rs:415` |
+| 10 | Caps Lock up after a chord resyncs the Caps Lock light | `src/win.rs:520` |
 
 ## Failure modes
 
 | When | Result | Handled at |
 | --- | --- | --- |
-| No chord matches | console: `no chord '<chord>' for <exe> "<title>"` | `src/win.rs:324` |
-| A chord file has an error | bad chord or file skipped, error printed, others keep working | `src/config.rs:169` |
+| No chord matches | console: `no chord '<chord>' for <exe> "<title>"` | `src/win.rs:353` |
+| A chord file has an error | bad chord or file skipped, error printed, others keep working | `src/config.rs:199` |
 | Space or Caps release lost (focus change, UAC) | machine assumes it after 1.5 s or 15 s idle | `src/machine.rs:116` |
-| Windows drops the hook (timeout, sleep) | reinstalled every 5 min and on unlock/resume | `src/win.rs:425`, `src/panel.rs:284` |
-| A panic in the hook | key passes through unchanged | `src/win.rs:452` |
-| Main thread busy, channel full (64) | effect dropped, hook stays alive | `src/win.rs:464` |
+| Windows drops the hook (timeout, sleep) | reinstalled every 5 min and on unlock/resume | `src/win.rs:454`, `src/panel.rs:284` |
+| A panic in the hook | key passes through unchanged | `src/win.rs:481` |
+| Main thread busy, channel full (64) | effect dropped, hook stays alive | `src/win.rs:493` |

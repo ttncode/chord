@@ -2,6 +2,19 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/).
 
+## [0.2.0] - 2026-11-01
+
+### Added
+
+- Installer (`chord-setup-<version>.exe`): per-user install to `%LOCALAPPDATA%\Programs\chord` without an admin prompt, Start menu shortcut, optional start at sign-in, upgrade in place, uninstall from Settings → Apps.
+- App icon.
+- Releases are built and published by GitHub Actions: installer, portable zip and `SHA256SUMS.txt`.
+
+### Changed
+
+- chord no longer opens a console window. Started from a terminal, it prints there; otherwise it lives only in the tray. A second copy shows a message instead of printing one.
+- Chord files default to `%APPDATA%\chord\chords`, created from the built-in starter set on first start. A `chords` folder in the current folder (portable zip, development) still wins.
+
 ## [0.1.0] - 2026-11-01
 
 First release. Windows x64; tested on Windows 10 22H2.
@@ -24,4 +37,5 @@ First release. Windows x64; tested on Windows 10 22H2.
 - Elements an app draws without telling UI Automation (custom-drawn apps, Postman's ☰ and window buttons) get no label.
 - `chord.exe` is not signed; Windows SmartScreen may warn on first run.
 
+[0.2.0]: https://github.com/ttncode/chord/releases/tag/v0.2.0
 [0.1.0]: https://github.com/ttncode/chord/releases/tag/v0.1.0

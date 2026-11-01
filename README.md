@@ -1,3 +1,5 @@
+<img src="assets/chord.png" alt="chord icon: a dark key with a white command symbol" width="96" align="right">
+
 # chord
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
@@ -10,18 +12,19 @@ Keyboard chords for Windows. Hold **Caps Lock**, hold **Space**, type a few lett
 - **Mouse-free:** switch apps, snap windows, scroll, and click any button through Vimium-style labels.
 - **Small and fast:** one native Rust program, no runtime, no background service.
 
-Inspired by [KeyChord/Chord](https://github.com/KeyChord/Chord) for macOS. This is an independent implementation; no code is shared. Early version (0.1): Windows only, tested on Windows 10 22H2.
+Inspired by [KeyChord/Chord](https://github.com/KeyChord/Chord) for macOS. This is an independent implementation; no code is shared. Early version: Windows only, tested on Windows 10 22H2.
 
 ## Install
 
-1. Download `chord-v0.1.0-windows-x64.zip` from [Releases](https://github.com/ttncode/chord/releases/latest).
-2. Unzip it anywhere, for example to `C:\Tools\chord`. It holds `chord.exe` and a `chords` folder with starter chords.
-3. Run `chord.exe`. A console window shows what each chord does; a ⌘ icon appears in the tray.
-4. Optional: tray icon → **Start with Windows**. chord then starts at login without a console window, using that `chords` folder.
+1. Download `chord-setup-<version>.exe` from [Releases](https://github.com/ttncode/chord/releases/latest) and run it. It installs for your user only (no admin prompt) into `%LOCALAPPDATA%\Programs\chord`.
+2. Keep **Start chord when I sign in to Windows** ticked, and finish with **Launch chord now**. A ⌘ icon appears in the notification area of the taskbar; there is no window.
+3. Your chord files live in `%APPDATA%\chord\chords`. The first start creates them from the starter set; tray icon → **Open chords folder** opens them.
 
-Quit with `Ctrl + Space + Esc`, the tray menu, or `Ctrl+C` in the console. Only one copy runs at a time.
+Windows may show a SmartScreen warning, because the installer isn't signed: choose **More info → Run anyway**.
 
-Windows may show a SmartScreen warning, because the program isn't signed: choose **More info → Run anyway**.
+Quit with `Ctrl + Space + Esc` or the tray menu. Only one copy runs at a time. Installing a newer version closes the running one and keeps your chord files. Uninstall from **Settings → Apps**; your chord files stay in `%APPDATA%\chord`.
+
+**Portable:** `chord-v<version>-windows-x64.zip` holds `chord.exe` and a `chords` folder. Unzip it anywhere and run `chord.exe`; a `chords` folder in the folder it starts from wins over `%APPDATA%\chord\chords`.
 
 ## Quick start
 
@@ -41,7 +44,7 @@ Caps Lock alone still toggles Caps Lock. Space alone still types a space.
 
 ## Chord files
 
-Every `*.toml` file in `chords\` is loaded. Files are read again each time a chord fires, so a saved change applies to the next chord, without restarting.
+Every `*.toml` file in the chords folder (see [Install](#install)) is loaded. Files are read again each time a chord fires, so a saved change applies to the next chord, without restarting.
 
 ```toml
 name = "Antigravity"
@@ -109,8 +112,8 @@ If a button gets no label, run chord with `--debug-hints`, press `;` there, and 
 
 | Option | Does |
 |---|---|
-| `--chords <folder>` | Load chord files from this folder (default: `chords` in the current folder) |
-| `--background` | No console window (used by Start with Windows) |
+| `--chords <folder>` | Load chord files from this folder (default: `chords` in the current folder if there is one, else `%APPDATA%\chord\chords`) |
+| `--background` | Don't print to the terminal chord was started from (used by Start with Windows) |
 | `--debug-hints` | Each label scan writes what Windows reported to `hints-debug.txt` |
 
 ## Look
@@ -121,18 +124,20 @@ The panel and labels follow macOS: rounded corners, a soft shadow, Apple's syste
 
 - Chords do nothing while an app running as administrator is in front, and nothing works on the lock screen or UAC prompts.
 - Custom-drawn apps and games may show few or no labels; Postman's ☰ menu and window buttons are among them.
-- In the console, don't select text while chord runs: Windows pauses console output (QuickEdit) until you press Esc there.
+- chord has no window of its own. Started from a terminal, it prints what each chord does there; don't select text in that terminal while chord runs, or Windows pauses its output (QuickEdit) until you press Esc.
 
 ## Build from source
 
-Needs [Rust](https://rustup.rs) 1.85 or newer on Windows. Without Visual Studio Build Tools, the GNU toolchain works: `rustup override set stable-x86_64-pc-windows-gnu` in the project folder.
+Needs [Rust](https://rustup.rs) 1.85 or newer on Windows. Without Visual Studio Build Tools, the GNU toolchain works (`rustup override set stable-x86_64-pc-windows-gnu` in the project folder), but its `chord.exe` gets no icon: only the MSVC toolchain can embed it.
 
 ```powershell
 git clone https://github.com/ttncode/chord
 cd chord
 cargo test            # logic tests, no keyboard needed
-cargo run --release   # or: cargo run --release -- --chords D:\my-chords
+cargo run --release   # prints to this terminal; or: cargo run --release -- --chords D:\my-chords
 ```
+
+Releases are built by [GitHub Actions](.github/workflows/release.yml) when a `v*` tag matching the version in `Cargo.toml` is pushed: tests, `chord.exe`, the installer ([Inno Setup](installer/chord.iss)), the portable zip and `SHA256SUMS.txt`.
 
 <details>
 <summary>Manual test checklist (run on a real machine; the automated tests can't press real keys)</summary>
@@ -144,6 +149,13 @@ Chords from files:
 - [ ] In Neovim (with `vim.opt.title = true`): `fe` opens the LazyVim explorer.
 - [ ] Change a chord's `shortcut` in a file, save, and run it again: the new shortcut is used without restarting.
 - [ ] Write `shorcut` (typo) in one chord: the console names that chord, and the other chords still work.
+
+Install:
+- [ ] The installer runs without an admin prompt, adds "chord" to the Start menu, and "Launch chord now" starts it with no window.
+- [ ] With "Start chord when I sign in" ticked, chord is running after a sign-out and sign-in.
+- [ ] Running the installer again while chord runs closes it, installs, and keeps the files in `%APPDATA%\chord\chords`.
+- [ ] Uninstalling from Settings → Apps removes the program and the startup entry; `%APPDATA%\chord` stays.
+- [ ] `cargo run --release` in a terminal still prints each chord there.
 
 Panel and tray:
 - [ ] Holding Caps Lock + Space fades the panel in near the top centre, without taking focus from the app; typing narrows it and colours the typed keys blue; releasing Space fades it out.
