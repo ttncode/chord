@@ -165,6 +165,36 @@ pub fn hint_prefix(files: &[ChordFile], exe: &str, title: &str, chord: &str) -> 
     })
 }
 
+/// The starter chord files, built into the program so an installed copy can create them.
+pub const STARTERS: [(&str, &str); 4] = [
+    ("global.toml", include_str!("../chords/global.toml")),
+    ("antigravity.toml", include_str!("../chords/antigravity.toml")),
+    ("windows-terminal.toml", include_str!("../chords/windows-terminal.toml")),
+    ("lazyvim.toml", include_str!("../chords/lazyvim.toml")),
+];
+
+/// Where chord files live when `--chords` isn't given: a `chords` folder in the current folder
+/// (portable zip, development) wins; otherwise the per-user folder, e.g. `%APPDATA%\chord\chords`.
+pub fn default_dir(local: &std::path::Path, per_user: Option<std::path::PathBuf>) -> std::path::PathBuf {
+    match per_user {
+        Some(dir) if !local.is_dir() => dir,
+        _ => local.to_path_buf(),
+    }
+}
+
+/// Creates `dir` with the starter files when it doesn't exist yet. An existing folder is never
+/// touched, so deleted or edited starters stay that way.
+pub fn create_with_starters(dir: &std::path::Path) -> std::io::Result<()> {
+    if dir.exists() {
+        return Ok(());
+    }
+    std::fs::create_dir_all(dir)?;
+    for (name, text) in STARTERS {
+        std::fs::write(dir.join(name), text)?;
+    }
+    Ok(())
+}
+
 /// Every `*.toml` directly in `dir`, sorted by file name. A missing directory is an error, not a panic.
 pub fn load_dir(dir: &std::path::Path) -> (Vec<ChordFile>, Vec<String>) {
     let entries = match std::fs::read_dir(dir) {
@@ -566,6 +596,29 @@ mod tests {
         let (files, errors) = load_dir(std::path::Path::new("/no/such/dir"));
         assert!(files.is_empty());
         assert_eq!(errors.len(), 1);
+    }
+
+    #[test]
+    fn local_chords_folder_wins_over_the_per_user_one() {
+        let local = std::env::temp_dir().join(format!("chord-test-local-{}", std::process::id()));
+        let per_user = std::path::PathBuf::from("per-user");
+        assert_eq!(default_dir(&local, Some(per_user.clone())), per_user);
+        std::fs::create_dir_all(&local).unwrap();
+        assert_eq!(default_dir(&local, Some(per_user)), local);
+        assert_eq!(default_dir(&local, None), local);
+        std::fs::remove_dir_all(&local).unwrap();
+    }
+
+    #[test]
+    fn starters_are_written_once_into_a_new_folder() {
+        let dir = std::env::temp_dir().join(format!("chord-test-starters-{}", std::process::id())).join("chords");
+        create_with_starters(&dir).unwrap();
+        let (files, errors) = load_dir(&dir);
+        assert_eq!((files.len(), errors.len()), (4, 0));
+        std::fs::remove_file(dir.join("lazyvim.toml")).unwrap();
+        create_with_starters(&dir).unwrap();
+        assert!(!dir.join("lazyvim.toml").exists(), "an existing folder must not be refilled");
+        std::fs::remove_dir_all(dir.parent().unwrap()).unwrap();
     }
 
     #[test]

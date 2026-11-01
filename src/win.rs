@@ -18,7 +18,12 @@ use windows::Win32::Foundation::{
     CloseHandle, ERROR_ALREADY_EXISTS, GetLastError, HINSTANCE, HWND, LPARAM, LRESULT, POINT, RECT,
     WPARAM,
 };
-use windows::Win32::System::Console::FreeConsole;
+use windows::Win32::Foundation::{GENERIC_READ, GENERIC_WRITE};
+use windows::Win32::Storage::FileSystem::{
+    CreateFileW, FILE_FLAGS_AND_ATTRIBUTES, FILE_SHARE_READ, FILE_SHARE_WRITE, OPEN_EXISTING,
+};
+use windows::Win32::System::Console::{ATTACH_PARENT_PROCESS, AttachConsole, STD_ERROR_HANDLE, STD_OUTPUT_HANDLE, SetStdHandle};
+use windows::Win32::UI::WindowsAndMessaging::{MB_ICONINFORMATION, MB_OK, MessageBoxW};
 use windows::Win32::UI::HiDpi::{DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2, SetProcessDpiAwarenessContext};
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::System::Threading::{
@@ -34,7 +39,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
     HC_ACTION, HHOOK, KBDLLHOOKSTRUCT, MSG, PostThreadMessageW, SetTimer, SetWindowsHookExW,
     UnhookWindowsHookEx, WH_KEYBOARD_LL, WM_APP, WM_KEYDOWN, WM_SYSKEYDOWN, WM_TIMER,
 };
-use windows::core::{PWSTR, w};
+use windows::core::{HSTRING, PWSTR, w};
 
 use crate::config::{self, Action, Mouse};
 use crate::{hints, uia};
@@ -68,10 +73,34 @@ pub fn claim_single_instance() -> bool {
     }
 }
 
-/// Closes the console window when started with `--background` (e.g. from Start with Windows).
-pub fn detach_console() {
+/// Prints into the terminal chord was started from, if any. False when there is none (Start menu,
+/// Explorer, sign-in), so the caller knows nobody will see console output.
+pub fn attach_console() -> bool {
     unsafe {
-        let _ = FreeConsole();
+        if AttachConsole(ATTACH_PARENT_PROCESS).is_err() {
+            return false;
+        }
+        // A GUI program starts without standard handles; point stdout and stderr at the console.
+        if let Ok(out) = CreateFileW(
+            w!("CONOUT$"),
+            (GENERIC_READ | GENERIC_WRITE).0,
+            FILE_SHARE_READ | FILE_SHARE_WRITE,
+            None,
+            OPEN_EXISTING,
+            FILE_FLAGS_AND_ATTRIBUTES(0),
+            None,
+        ) {
+            let _ = SetStdHandle(STD_OUTPUT_HANDLE, out);
+            let _ = SetStdHandle(STD_ERROR_HANDLE, out);
+        }
+        true
+    }
+}
+
+/// A message box, for when there is no terminal to print to.
+pub fn message(text: &str) {
+    unsafe {
+        MessageBoxW(None, &HSTRING::from(text), w!("chord"), MB_OK | MB_ICONINFORMATION);
     }
 }
 
