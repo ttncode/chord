@@ -49,6 +49,8 @@ Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: 
 
 [Run]
 Filename: "{app}\chord.exe"; Description: "Launch chord now"; Flags: nowait postinstall skipifsilent
+; Updates from the tray run the installer with /SILENT: start chord again afterwards.
+Filename: "{app}\chord.exe"; Parameters: "--background"; Flags: nowait; Check: WizardSilent
 
 [UninstallRun]
 Filename: "{sys}\taskkill.exe"; Parameters: "/F /IM chord.exe"; Flags: runhidden; RunOnceId: "StopChord"

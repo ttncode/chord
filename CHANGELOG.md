@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/).
 
+## [0.3.0] - 2026-11-02
+
+### Added
+
+- Tray icon → **Check for updates**: finds the newest release on GitHub, and after you confirm, downloads its installer and installs it silently; chord starts again by itself.
+- Loop breaker: if chord has to act 30 times within 2 seconds (Caps Lock sends or chord runs), another program is feeding its keys back to it. chord lets go of the keyboard at once, says which app was in front, and quits, instead of hanging the PC.
+
 ## [0.2.1] - 2026-11-02
 
 ### Fixed
@@ -43,6 +50,7 @@ First release. Windows x64; tested on Windows 10 22H2.
 - Elements an app draws without telling UI Automation (custom-drawn apps, Postman's ☰ and window buttons) get no label.
 - `chord.exe` is not signed; Windows SmartScreen may warn on first run.
 
+[0.3.0]: https://github.com/ttncode/chord/releases/tag/v0.3.0
 [0.2.1]: https://github.com/ttncode/chord/releases/tag/v0.2.1
 [0.2.0]: https://github.com/ttncode/chord/releases/tag/v0.2.0
 [0.1.0]: https://github.com/ttncode/chord/releases/tag/v0.1.0

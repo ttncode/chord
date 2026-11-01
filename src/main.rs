@@ -19,6 +19,7 @@ mod hints;
 mod keys;
 mod machine;
 mod style;
+mod update;
 #[cfg(windows)]
 mod panel;
 #[cfg(windows)]

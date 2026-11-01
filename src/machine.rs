@@ -287,6 +287,27 @@ fn is_modifier(vk: u16) -> bool {
 }
 
 /// Every character `char_of` can produce; chord names in files must use only these.
+/// Effects (Caps Lock sends, chord runs) within `STORM_WINDOW_MS` that mean a feedback loop, not a
+/// person: like AutoHotkey's #MaxHotkeysPerInterval. A person tops out near 10 per second.
+pub const STORM_MAX: usize = 30;
+pub const STORM_WINDOW_MS: u64 = 2_000;
+
+/// Counts effects over a sliding window; `hit` says when they come faster than a person can type.
+#[derive(Default)]
+pub struct Storm {
+    times: std::collections::VecDeque<u64>,
+}
+
+impl Storm {
+    pub fn hit(&mut self, now_ms: u64) -> bool {
+        while self.times.front().is_some_and(|t| now_ms.saturating_sub(*t) > STORM_WINDOW_MS) {
+            self.times.pop_front();
+        }
+        self.times.push_back(now_ms);
+        self.times.len() >= STORM_MAX
+    }
+}
+
 pub const CHORD_CHARS: &str = "abcdefghijklmnopqrstuvwxyz0123456789;=,-./[]'";
 
 /// Chord letters are matched by virtual key (US layout), never translated, so IMEs and dead keys can't interfere.
@@ -650,5 +671,29 @@ mod tests {
             release(&mut m, G);
         }
         assert_eq!(press(&mut m, D), block());
+    }
+
+    #[test]
+    fn storm_ignores_fast_human_typing() {
+        let mut storm = Storm::default();
+        // 10 per second for 10 s: faster than anyone keeps up.
+        assert!((0..100).all(|i| !storm.hit(i * 100)));
+    }
+
+    #[test]
+    fn storm_trips_on_a_burst_inside_the_window() {
+        let mut storm = Storm::default();
+        let tripped: Vec<bool> = (0..STORM_MAX as u64).map(|i| storm.hit(1_000 + i * 10)).collect();
+        assert_eq!(tripped.iter().filter(|t| **t).count(), 1);
+        assert!(tripped[STORM_MAX - 1]);
+    }
+
+    #[test]
+    fn storm_forgets_hits_older_than_the_window() {
+        let mut storm = Storm::default();
+        for i in 0..STORM_MAX as u64 - 1 {
+            storm.hit(i);
+        }
+        assert!(!storm.hit(STORM_WINDOW_MS + 100));
     }
 }

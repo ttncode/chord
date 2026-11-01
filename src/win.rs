@@ -10,9 +10,9 @@ use std::os::windows::process::CommandExt;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
-use std::sync::atomic::{AtomicIsize, AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicIsize, AtomicU32, Ordering};
 use std::sync::mpsc::{SyncSender, sync_channel};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use windows::Win32::Foundation::{
     CloseHandle, ERROR_ALREADY_EXISTS, GetLastError, HINSTANCE, HWND, LPARAM, LRESULT, POINT, RECT,
@@ -46,7 +46,7 @@ use crate::{hints, uia};
 use crate::panel;
 use crate::window;
 use crate::keys::{Key, parse_shortcut};
-use crate::machine::{Effect, Machine, VK_CAPITAL, VK_SPACE};
+use crate::machine::{Effect, Machine, STORM_MAX, STORM_WINDOW_MS, Storm, VK_CAPITAL, VK_SPACE};
 
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 const CAPS: [Key; 1] = [Key { vk: VK_CAPITAL, extended: false }];
@@ -57,6 +57,8 @@ const TAG: usize = 0x4348_4F52;
 static EFFECTS: OnceLock<SyncSender<Effect>> = OnceLock::new();
 static HOOK: AtomicIsize = AtomicIsize::new(0);
 static HOOK_THREAD: AtomicU32 = AtomicU32::new(0);
+/// Set when a feedback loop is detected: from then on the hook passes every key untouched.
+static STOPPED: AtomicBool = AtomicBool::new(false);
 const WM_RESET_HOOK: u32 = WM_APP + 10;
 const REINSTALL_EVERY_MS: u32 = 5 * 60 * 1000;
 
@@ -225,7 +227,13 @@ pub fn run(chords_dir: PathBuf) {
     let mut session: Option<Session> = None;
     let mut hints: Option<Hints> = None;
     let mut buffer = String::new();
+    let mut storm = Storm::default();
+    let started = Instant::now();
     for effect in rx {
+        let ours = matches!(effect, Effect::ToggleCaps | Effect::ResyncCapsLight | Effect::Fire(_) | Effect::FireKeep(_));
+        if ours && storm.hit(started.elapsed().as_millis() as u64) {
+            stop_for_loop();
+        }
         match effect {
             Effect::Enter => {
                 buffer.clear();
@@ -473,7 +481,7 @@ fn hook_thread() {
 }
 
 unsafe extern "system" fn hook(code: i32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
-    if code == HC_ACTION as i32 {
+    if code == HC_ACTION as i32 && !STOPPED.load(Ordering::Relaxed) {
         let event = unsafe { &*(lparam.0 as *const KBDLLHOOKSTRUCT) };
         let down = matches!(wparam.0 as u32, WM_KEYDOWN | WM_SYSKEYDOWN);
         // Remote desktop and VM clients sync Caps Lock by injecting it: handling that would toggle
@@ -519,6 +527,23 @@ fn key_input(vk: u16, scan: u16, flags: KEYBD_EVENT_FLAGS) -> INPUT {
             },
         },
     }
+}
+
+/// Another program keeps feeding our own input back to us. Let go of the keyboard first, so the loop
+/// ends even while the message waits for OK, then quit.
+fn stop_for_loop() -> ! {
+    STOPPED.store(true, Ordering::SeqCst);
+    let (exe, _) = foreground();
+    say!("\nstopped: feedback loop with {exe}");
+    panel::remove_tray();
+    message(&format!(
+        "chord stopped itself: it had to act {STORM_MAX} times in {} seconds while {exe} was in front, \
+         faster than anyone types. Another program is sending chord's keys back to it.\n\n\
+         Start chord again from the Start menu. If this keeps happening, quit the other program or tell \
+         the chord project which one it was.",
+        STORM_WINDOW_MS / 1000
+    ));
+    std::process::exit(1);
 }
 
 /// Toggles Caps Lock twice: the state ends where it was, and Windows rewrites the light each time.

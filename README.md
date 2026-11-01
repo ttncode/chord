@@ -22,7 +22,7 @@ Inspired by [KeyChord/Chord](https://github.com/KeyChord/Chord) for macOS. This 
 
 Windows may show a SmartScreen warning, because the installer isn't signed: choose **More info → Run anyway**.
 
-Quit with `Ctrl + Space + Esc` or the tray menu. Only one copy runs at a time. Installing a newer version closes the running one and keeps your chord files. Uninstall from **Settings → Apps**; your chord files stay in `%APPDATA%\chord`.
+Quit with `Ctrl + Space + Esc` or the tray menu. Only one copy runs at a time. Installing a newer version closes the running one and keeps your chord files; tray icon → **Check for updates** downloads and installs the newest release for you. Uninstall from **Settings → Apps**; your chord files stay in `%APPDATA%\chord`.
 
 **Portable:** `chord-v<version>-windows-x64.zip` holds `chord.exe` and a `chords` folder. Unzip it anywhere and run `chord.exe`; a `chords` folder in the folder it starts from wins over `%APPDATA%\chord\chords`.
 
@@ -162,6 +162,7 @@ Panel and tray:
 - [ ] Holding Caps Lock + Space fades the panel in near the top centre, without taking focus from the app; typing narrows it and colours the typed keys blue; releasing Space fades it out.
 - [ ] Switching Windows between light and dark mode changes the panel, the tray icon (⌘) and the tray menu to match.
 - [ ] Tray icon → "Open chords folder" opens the folder; "Start with Windows" toggles a check mark and survives a reboot; "Quit" exits.
+- [ ] Tray icon → "Check for updates" says the version is the latest, or offers the newer one; accepting installs it silently and chord starts again on its own.
 - [ ] Starting a second copy prints "chord is already running".
 
 Chord mode keys:
@@ -183,6 +184,7 @@ Robustness:
 Caps Lock:
 - [ ] Tapping Caps Lock alone still turns it on and off.
 - [ ] After any chord, the Caps Lock light and the actual state match what they were before.
+- [ ] Tapping Caps Lock or running chords as fast as you can never stops chord (the loop breaker trips only at 30 in 2 seconds).
 - [ ] With a Remote Desktop (`mstsc`) window in front, Caps Lock toggles once, the PC stays responsive, and chords reach the chord running on the remote PC.
 
 Vietnamese Telex (switch to it with `Win + Space`):

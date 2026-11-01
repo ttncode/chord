@@ -44,6 +44,7 @@ const WM_HINTS: u32 = WM_APP + 3;
 const ID_OPEN: usize = 1;
 const ID_AUTOSTART: usize = 2;
 const ID_QUIT: usize = 3;
+const ID_UPDATE: usize = 4;
 const PANEL_HIDE: usize = 0;
 const PANEL_SHOW: usize = 1;
 const PANEL_HIDE_NOW: usize = 2;
@@ -618,6 +619,7 @@ fn tray_menu(hwnd: HWND) {
         let autostart_flags = if autostart::enabled() { MF_STRING | MF_CHECKED } else { MF_STRING };
         let _ = AppendMenuW(menu, MF_STRING, ID_OPEN, w!("Open chords folder"));
         let _ = AppendMenuW(menu, autostart_flags, ID_AUTOSTART, w!("Start with Windows"));
+        let _ = AppendMenuW(menu, MF_STRING, ID_UPDATE, w!("Check for updates"));
         let _ = AppendMenuW(menu, MF_SEPARATOR, 0, PCWSTR::null());
         let _ = AppendMenuW(menu, MF_STRING, ID_QUIT, w!("Quit"));
         let mut point = Default::default();
@@ -639,6 +641,7 @@ fn tray_menu(hwnd: HWND) {
                     }
                 }
             }
+            ID_UPDATE => crate::update::check_in_background(),
             ID_QUIT => {
                 remove_tray();
                 std::process::exit(0);
