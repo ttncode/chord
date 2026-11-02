@@ -10,3 +10,6 @@ tn = { name = "Next tab", shortcut = "ctrl+tab" }
 tp = { name = "Previous tab", shortcut = "ctrl+shift+tab" }
 sv = { name = "Split pane right", shortcut = "alt+shift+plus" }
 sh = { name = "Split pane down", shortcut = "alt+shift+-" }
+# Ctrl+Shift+PgUp/PgDn scroll the buffer here, so these override the global tab moves.
+"/th" = { name = "Tab: move left", palette = "Move tab backward" }
+"/tl" = { name = "Tab: move right", palette = "Move tab forward" }

@@ -72,6 +72,8 @@ Key names: `ctrl shift alt win`, `a`–`z`, `0`–`9`, `f1`–`f24`, `left right
 
 Chord letters: `a`–`z`, `0`–`9` and `` ; = , - . / [ ] ' ``. Start global chords with a symbol (`/e`) so they never clash with app chords.
 
+**Groups:** an optional `[groups]` table names chord prefixes, e.g. `"/w" = "Window"`. While you type, the panel lists the groups that start with your letters on one line under the chords (type `/` to see every global group). A group in an app's file beats a global one with the same prefix.
+
 **Regex chords:** parts in `( )` are a regular expression, the rest is literal; `$1`…`$9` in `name`, `shell` and `palette` are filled from the match. Example: `'/o(\d+)' = { name = "Open port $1", shell = 'start http://localhost:$1' }`, then type `/o3000`. An exact chord beats a pattern.
 
 **Which chord wins** when several files define it: a file matching the app *and* window title, then the app only, then a global file with a title, then a plain global file. If two files tie, the one whose file name sorts first wins and the console prints a warning.
@@ -163,6 +165,7 @@ Panel and tray:
 - [ ] Switching Windows between light and dark mode changes the panel, the tray icon (⌘) and the tray menu to match.
 - [ ] Tray icon → "Open chords folder" opens the folder; "Start with Windows" toggles a check mark and survives a reboot; "Quit" exits.
 - [ ] Tray icon → "Check for updates" says the version is the latest, or offers the newer one; accepting installs it silently and chord starts again on its own.
+- [ ] Type `/` in chord mode: a small line under the chords lists `/w Window · /d Desktop · …`; typing `/w` hides it. `/th` and `/tl` move the tab in Chrome, Antigravity and Windows Terminal.
 - [ ] Starting a second copy prints "chord is already running".
 
 Chord mode keys:

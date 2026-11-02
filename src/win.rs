@@ -112,13 +112,16 @@ struct Session {
     title: String,
     files: Vec<config::ChordFile>,
     chords: Vec<(String, String)>,
+    groups: Vec<(String, String)>,
 }
 
 impl Session {
     fn start(dir: &Path) -> Self {
         let (exe, title) = foreground();
         let (files, _) = config::load_dir(dir);
-        Self { chords: config::available(&files, &exe, &title), files, app: exe, title }
+        let chords = config::available(&files, &exe, &title);
+        let groups = config::available_groups(&files, &exe, &title);
+        Self { chords, groups, files, app: exe, title }
     }
 
     fn view(&self, buffer: &str) -> panel::View {
@@ -127,7 +130,14 @@ impl Session {
             Some((prefix, _)) => prefix.starts_with(buffer) || buffer.starts_with(prefix),
             None => chord.starts_with(buffer),
         });
-        panel::View { app: self.app.clone(), typed: buffer.to_string(), rows: matching.cloned().collect() }
+        // A group stays listed until its whole prefix is typed: by then its chords are the rows.
+        let groups = self.groups.iter().filter(|(prefix, _)| prefix.starts_with(buffer) && prefix != buffer);
+        panel::View {
+            app: self.app.clone(),
+            typed: buffer.to_string(),
+            rows: matching.cloned().collect(),
+            groups: groups.cloned().collect(),
+        }
     }
 
     /// Length of the hint chord `chord` starts with (`;` in `;aj`), and its click kind.

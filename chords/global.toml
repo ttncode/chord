@@ -1,7 +1,15 @@
 # Global chords work in every app. Start them with a symbol so they never clash with app chords.
 #   /<letter>  switch to an app (its next window if it's already in front), start it if it isn't running
-#   /w  window   /d  desktop   /s  system   /v  media   /m  mouse
 name = "Global"
+
+# The panel lists these as a reminder while you type.
+[groups]
+"/w" = "Window"
+"/d" = "Desktop"
+"/s" = "System"
+"/v" = "Media"
+"/m" = "Mouse"
+"/t" = "Tab"
 
 [chords]
 # Apps
@@ -74,6 +82,10 @@ name = "Global"
 "/mn" = { name = "Mouse: forward", mouse = "forward" }
 "/mt" = { name = "Go to top", shortcut = "ctrl+home" }
 "/mb" = { name = "Go to bottom", shortcut = "ctrl+end" }
+
+# Tabs: Chrome, Firefox, Antigravity (VS Code). Windows Terminal has its own in windows-terminal.toml.
+"/th" = { name = "Tab: move left", shortcut = "ctrl+shift+pageup" }
+"/tl" = { name = "Tab: move right", shortcut = "ctrl+shift+pagedown" }
 
 # Hint labels: type the chord, then the label's letters, release Space to click it
 ";" = { name = "Click (labels)", hints = "click" }

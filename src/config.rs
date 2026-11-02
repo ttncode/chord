@@ -49,6 +49,8 @@ pub struct ChordFile {
     pub chords: BTreeMap<String, Chord>,
     /// Chords whose key has `( … )` regex parts, compiled; the chord itself is in `chords` under the same key.
     pub patterns: Vec<(String, regex::Regex)>,
+    /// Chord prefix → group name (`"/w"` → `"Window"`), shown in the panel as a reminder.
+    pub groups: BTreeMap<String, String>,
 }
 
 /// `None` only when the TOML itself can't be parsed. Every error starts with `"{file}: "`.
@@ -64,7 +66,7 @@ pub fn parse_file(file: &str, text: &str) -> (Option<ChordFile>, Vec<String>) {
     let mut err = |msg: String| errors.push(format!("{file}: {msg}"));
 
     for key in table.keys() {
-        if !matches!(key.as_str(), "name" | "app" | "title" | "chords") {
+        if !matches!(key.as_str(), "name" | "app" | "title" | "groups" | "chords") {
             err(format!("unknown field '{key}'"));
         }
     }
@@ -101,7 +103,23 @@ pub fn parse_file(file: &str, text: &str) -> (Option<ChordFile>, Vec<String>) {
         None => err("missing [chords]".into()),
     }
 
-    (Some(ChordFile { file: file.into(), name, app, title, chords, patterns }), errors)
+    let mut groups = BTreeMap::new();
+    match table.get("groups") {
+        Some(toml::Value::Table(entries)) => {
+            for (key, value) in entries {
+                match value {
+                    toml::Value::String(name) => {
+                        groups.insert(key.clone(), name.clone());
+                    }
+                    _ => err(format!("group '{key}' must be a string")),
+                }
+            }
+        }
+        Some(_) => err("'groups' must be a table".into()),
+        None => {}
+    }
+
+    (Some(ChordFile { file: file.into(), name, app, title, chords, patterns, groups }), errors)
 }
 
 pub struct Resolved<'a> {
@@ -114,18 +132,8 @@ pub struct Resolved<'a> {
 
 /// Priority: app + title, app only, title only, global. Within a tier the first file by name wins.
 pub fn resolve<'a>(files: &'a [ChordFile], exe: &str, title: &str, chord: &str) -> Option<Resolved<'a>> {
-    let exe = exe.to_lowercase();
-    let title = title.to_lowercase();
-    let tier = |f: &ChordFile| {
-        let title_match = f.title.as_ref().map(|t| title.contains(t.as_str()));
-        match (&f.app, title_match) {
-            (Some(app), Some(true)) if *app == exe => Some(0),
-            (Some(app), None) if *app == exe => Some(1),
-            (None, Some(true)) => Some(2),
-            (None, None) => Some(3),
-            _ => None,
-        }
-    };
+    let (exe, title) = (exe.to_lowercase(), title.to_lowercase());
+    let tier = |f: &ChordFile| tier(f, &exe, &title);
     // Within a tier an exact chord (kind 0) beats a pattern (kind 1).
     let lookup = |f: &ChordFile| -> Option<(u8, Chord)> {
         if let Some(found) = f.chords.get(chord) {
@@ -145,6 +153,32 @@ pub fn resolve<'a>(files: &'a [ChordFile], exe: &str, title: &str, chord: &str) 
     let (best, file, chord) = hits.next()?;
     let shadowed = hits.filter(|h| h.0 == best).map(|h| h.1.file.as_str()).collect();
     Some(Resolved { file, chord, shadowed })
+}
+
+/// How strongly `f` applies to this window (0 best), `None` if it doesn't. `exe` and `title` are lowercase.
+fn tier(f: &ChordFile, exe: &str, title: &str) -> Option<u8> {
+    let title_match = f.title.as_ref().map(|t| title.contains(t.as_str()));
+    match (&f.app, title_match) {
+        (Some(app), Some(true)) if app == exe => Some(0),
+        (Some(app), None) if app == exe => Some(1),
+        (None, Some(true)) => Some(2),
+        (None, None) => Some(3),
+        _ => None,
+    }
+}
+
+/// Every group usable in this window as `(prefix, group name)`, sorted by prefix; the best tier names a prefix.
+pub fn available_groups(files: &[ChordFile], exe: &str, title: &str) -> Vec<(String, String)> {
+    let (exe, title) = (exe.to_lowercase(), title.to_lowercase());
+    let mut applying: Vec<_> = files.iter().filter_map(|f| Some((tier(f, &exe, &title)?, f))).collect();
+    applying.sort_by(|a, b| a.0.cmp(&b.0).then_with(|| a.1.file.cmp(&b.1.file)));
+    let mut groups = BTreeMap::new();
+    for (_, f) in applying {
+        for (key, name) in &f.groups {
+            groups.entry(key.clone()).or_insert_with(|| name.clone());
+        }
+    }
+    groups.into_iter().collect()
 }
 
 /// Every chord usable in this window as `(chord, chord name)`, sorted by chord; each chord's winner per `resolve`.
@@ -482,6 +516,29 @@ mod tests {
     fn unknown_chord_is_none() {
         let files = [file("a.toml", "", "/e")];
         assert!(resolve(&files, "notepad.exe", "", "zz").is_none());
+    }
+
+    #[test]
+    fn groups_come_from_files_that_apply_app_first() {
+        let parse = |name: &str, text: &str| {
+            let (f, errors) = parse_file(name, text);
+            assert!(errors.is_empty(), "{errors:?}");
+            f.unwrap()
+        };
+        let files = [
+            parse("ag.toml", "name = \"A\"\napp = \"code.exe\"\n[groups]\n\"/w\" = \"Code windows\"\nm = \"Menu\"\n[chords]\n"),
+            parse("g.toml", "name = \"G\"\n[groups]\n\"/w\" = \"Window\"\n\"/d\" = \"Desktop\"\n[chords]\n"),
+            parse("np.toml", "name = \"N\"\napp = \"notepad.exe\"\n[groups]\nx = \"Other\"\n[chords]\n"),
+        ];
+        let pairs = |v: &[(&str, &str)]| v.iter().map(|(a, b)| (a.to_string(), b.to_string())).collect::<Vec<_>>();
+        assert_eq!(available_groups(&files, "code.exe", ""), pairs(&[("/d", "Desktop"), ("/w", "Code windows"), ("m", "Menu")]));
+        assert_eq!(available_groups(&files, "cmd.exe", ""), pairs(&[("/d", "Desktop"), ("/w", "Window")]));
+    }
+
+    #[test]
+    fn group_name_must_be_a_string() {
+        let (_, errors) = parse_file("x.toml", "name = \"X\"\n[groups]\n\"/w\" = 1\n[chords]\n");
+        assert_eq!(errors, vec!["x.toml: group '/w' must be a string"]);
     }
 
     #[test]

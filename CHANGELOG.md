@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- `[groups]` in chord files names chord prefixes (`"/w" = "Window"`). The panel lists the groups that match what you typed on one small line, so you can find a chord without remembering its first letter.
+- Starter chords `/th` and `/tl` move the current tab left and right in Chrome, Firefox, Antigravity and Windows Terminal.
+
 ## [0.3.0] - 2026-11-02
 
 ### Added
@@ -50,6 +57,7 @@ First release. Windows x64; tested on Windows 10 22H2.
 - Elements an app draws without telling UI Automation (custom-drawn apps, Postman's ☰ and window buttons) get no label.
 - `chord.exe` is not signed; Windows SmartScreen may warn on first run.
 
+[Unreleased]: https://github.com/ttncode/chord/compare/v0.3.0...HEAD
 [0.3.0]: https://github.com/ttncode/chord/releases/tag/v0.3.0
 [0.2.1]: https://github.com/ttncode/chord/releases/tag/v0.2.1
 [0.2.0]: https://github.com/ttncode/chord/releases/tag/v0.2.0

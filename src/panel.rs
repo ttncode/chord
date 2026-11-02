@@ -57,6 +57,8 @@ pub struct View {
     pub app: String,
     pub typed: String,
     pub rows: Vec<(String, String)>,
+    /// Chord groups (`"/w"`, `"Window"`) whose prefix starts with what was typed, for the reminder line.
+    pub groups: Vec<(String, String)>,
 }
 
 static PANEL: AtomicIsize = AtomicIsize::new(0);
@@ -64,7 +66,7 @@ static OVERLAY: AtomicIsize = AtomicIsize::new(0);
 static TRAY_ICON: AtomicIsize = AtomicIsize::new(0);
 static HINTS: Mutex<(RECT, Vec<(POINT, String)>, String)> =
     Mutex::new((RECT { left: 0, top: 0, right: 0, bottom: 0 }, Vec::new(), String::new()));
-static VIEW: Mutex<View> = Mutex::new(View { app: String::new(), typed: String::new(), rows: Vec::new() });
+static VIEW: Mutex<View> = Mutex::new(View { app: String::new(), typed: String::new(), rows: Vec::new(), groups: Vec::new() });
 static CHORDS_DIR: OnceLock<PathBuf> = OnceLock::new();
 /// Explorer broadcasts this after it restarts; tray icons must be added again.
 static TASKBAR_CREATED: AtomicU32 = AtomicU32::new(0);
@@ -490,13 +492,14 @@ fn render_panel() -> Option<(Canvas, POINT)> {
     let margin = s(style::SHADOW_BLUR) + s(style::SHADOW_DROP);
     let top = work.top + (work.bottom - work.top) / 5;
 
-    let room = ((work.bottom - top - margin - header - 2 * gap) / row).max(1) as usize;
+    let group_line = usize::from(!view.groups.is_empty());
+    let room = ((work.bottom - top - margin - header - 2 * gap) / row - group_line as i32).max(1) as usize;
     let mut rows: Vec<(String, String)> = view.rows.clone();
     let more = rows.len().saturating_sub(room);
     if more > 0 {
         rows.truncate(room - 1);
     }
-    let lines = (rows.len() + usize::from(more > 0)).max(1) as i32;
+    let lines = ((rows.len() + usize::from(more > 0)).max(1) + group_line) as i32;
     let height = header + 1 + 2 * gap + lines * row;
 
     let mut canvas = Canvas::new(width + 2 * margin, height + 2 * margin)?;
@@ -550,6 +553,12 @@ fn render_panel() -> Option<(Canvas, POINT)> {
         canvas.text(cell, &format!("{more} more"), small, colors.secondary, DT_LEFT | DT_VCENTER);
     } else if rows.is_empty() {
         canvas.text(cell, "No chord starts with these keys", body, colors.secondary, DT_LEFT | DT_VCENTER);
+    }
+    if group_line > 0 {
+        let below = if more > 0 || rows.is_empty() { y + row } else { y };
+        let text = view.groups.iter().map(|(prefix, name)| format!("{prefix} {name}")).collect::<Vec<_>>().join("   ·   ");
+        let cell = RECT { top: below, bottom: below + row, ..cell };
+        canvas.text(cell, &text, small, colors.secondary, DT_LEFT | DT_VCENTER | DT_END_ELLIPSIS);
     }
 
     let at = POINT { x: work.left + (work.right - work.left - width) / 2 - margin, y: top - margin };
