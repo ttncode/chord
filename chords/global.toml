@@ -59,6 +59,7 @@ name = "Global"
 "/sn" = { name = "Notifications", shortcut = "win+n" }
 "/sr" = { name = "Run dialog", shortcut = "win+r" }
 "/sx" = { name = "Power-user menu", shortcut = "win+x" }
+"/sh" = { name = "Hidden tray icons", shortcut = "win+b enter" }
 "/r" = { name = "Translate the selection (DeepL)", shortcut = "ctrl+c ctrl+c" }
 
 # Media
@@ -90,3 +91,5 @@ name = "Global"
 # Hint labels: type the chord, then the label's letters, release Space to click it
 ";" = { name = "Click (labels)", hints = "click" }
 "'" = { name = "Right-click (labels)", hints = "right-click" }
+"/;" = { name = "Taskbar: click (labels)", hints = "click", on = "taskbar" }
+"/'" = { name = "Taskbar: right-click (labels)", hints = "right-click", on = "taskbar" }

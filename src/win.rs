@@ -35,13 +35,13 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{
     GetAsyncKeyState, KEYEVENTF_KEYUP, KEYEVENTF_UNICODE, SendInput, VIRTUAL_KEY,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-    CallNextHookEx, GetForegroundWindow, GetWindowRect, SetCursorPos, GetMessageW, GetWindowTextW, GetWindowThreadProcessId,
+    CallNextHookEx, FindWindowW, GetForegroundWindow, GetWindowRect, SetCursorPos, GetMessageW, GetWindowTextW, GetWindowThreadProcessId,
     HC_ACTION, HHOOK, KBDLLHOOKSTRUCT, LLKHF_INJECTED, MSG, PostThreadMessageW, SetTimer, SetWindowsHookExW,
     UnhookWindowsHookEx, WH_KEYBOARD_LL, WM_APP, WM_KEYDOWN, WM_SYSKEYDOWN, WM_TIMER,
 };
 use windows::core::{HSTRING, PWSTR, w};
 
-use crate::config::{self, Action, Mouse};
+use crate::config::{self, Action, Hint, Mouse};
 use crate::{hints, uia};
 use crate::panel;
 use crate::window;
@@ -141,7 +141,7 @@ impl Session {
     }
 
     /// Length of the hint chord `chord` starts with (`;` in `;aj`), and its click kind.
-    fn hint_prefix(&self, chord: &str) -> Option<(usize, Mouse)> {
+    fn hint_prefix(&self, chord: &str) -> Option<(usize, Hint)> {
         config::hint_prefix(&self.files, &self.app, &self.title, chord)
     }
 }
@@ -329,10 +329,15 @@ pub fn run(chords_dir: PathBuf) {
     }
 }
 
-/// Hides the panel, then labels the window in front; `key` is the typed part before the label.
-fn open_hints(key: &str, typed: &str, kind: Mouse) -> Option<Hints> {
+/// Hides the panel, then labels the window in front (or the taskbar); `key` is the typed part before the label.
+fn open_hints(key: &str, typed: &str, hint: Hint) -> Option<Hints> {
     panel::hide_now();
-    let hints = Hints::scan(unsafe { GetForegroundWindow() }, key, kind)?;
+    let hwnd = match hint.taskbar {
+        // shortcut: main taskbar only; other monitors' taskbars are Shell_SecondaryTrayWnd, add them if asked.
+        true => unsafe { FindWindowW(w!("Shell_TrayWnd"), None) }.ok()?,
+        false => unsafe { GetForegroundWindow() },
+    };
+    let hints = Hints::scan(hwnd, key, hint.click)?;
     hints.show(typed);
     Some(hints)
 }

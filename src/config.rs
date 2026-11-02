@@ -14,7 +14,14 @@ pub enum Action {
     Focus { exe: String, launch: Option<String> },
     Mouse(Mouse),
     /// Label the clickable elements in the window; the letters typed after the chord pick one.
-    Hints(Mouse),
+    Hints(Hint),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Hint {
+    pub click: Mouse,
+    /// Label the taskbar instead of the window in front.
+    pub taskbar: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -189,11 +196,11 @@ pub fn available(files: &[ChordFile], exe: &str, title: &str) -> Vec<(String, St
         .collect()
 }
 
-/// The hint chord a chord starts with (`;` in `;aj`): its length and click kind. The rest is a label.
-pub fn hint_prefix(files: &[ChordFile], exe: &str, title: &str, chord: &str) -> Option<(usize, Mouse)> {
+/// The hint chord a chord starts with (`;` in `;aj`): its length and what it labels. The rest is a label.
+pub fn hint_prefix(files: &[ChordFile], exe: &str, title: &str, chord: &str) -> Option<(usize, Hint)> {
     chord.char_indices().map(|(i, c)| i + c.len_utf8()).find_map(|end| {
         match resolve(files, exe, title, &chord[..end])?.chord.action {
-            Action::Hints(kind) => Some((end, kind)),
+            Action::Hints(hint) => Some((end, hint)),
             _ => None,
         }
     })
@@ -324,6 +331,7 @@ fn parse_chord(key: &str, value: &toml::Value) -> Result<(Chord, Option<regex::R
     let mut name = None;
     let mut actions = Vec::new();
     let mut launch = None;
+    let mut on = None;
     for (field, value) in fields {
         let toml::Value::String(s) = value else {
             return Err(format!("'{field}' must be a string"));
@@ -335,12 +343,16 @@ fn parse_chord(key: &str, value: &toml::Value) -> Result<(Chord, Option<regex::R
             "palette" => actions.push(Action::Palette(s.clone())),
             "focus" => actions.push(Action::Focus { exe: s.to_lowercase(), launch: None }),
             "launch" => launch = Some(s.clone()),
-            "hints" => actions.push(Action::Hints(match s.as_str() {
-                "click" => Mouse::Click,
-                "right-click" => Mouse::RightClick,
-                "double-click" => Mouse::DoubleClick,
-                other => return Err(format!("hints \"{other}\" must be click, right-click or double-click")),
-            })),
+            "on" => on = Some(s.clone()),
+            "hints" => {
+                let click = match s.as_str() {
+                    "click" => Mouse::Click,
+                    "right-click" => Mouse::RightClick,
+                    "double-click" => Mouse::DoubleClick,
+                    other => return Err(format!("hints \"{other}\" must be click, right-click or double-click")),
+                };
+                actions.push(Action::Hints(Hint { click, taskbar: false }));
+            }
             "mouse" => actions.push(Action::Mouse(match s.as_str() {
                 "click" => Mouse::Click,
                 "right-click" => Mouse::RightClick,
@@ -364,6 +376,13 @@ fn parse_chord(key: &str, value: &toml::Value) -> Result<(Chord, Option<regex::R
         match actions.as_mut_slice() {
             [Action::Focus { launch, .. }] => *launch = Some(command),
             _ => return Err("'launch' only goes together with 'focus'".into()),
+        }
+    }
+    if let Some(target) = on {
+        match (actions.as_mut_slice(), target.as_str()) {
+            ([Action::Hints(hint)], "taskbar") => hint.taskbar = true,
+            ([Action::Hints(_)], other) => return Err(format!("on \"{other}\" must be taskbar")),
+            _ => return Err("'on' only goes together with 'hints'".into()),
         }
     }
     match <[Action; 1]>::try_from(actions) {
@@ -637,7 +656,24 @@ mod tests {
     #[test]
     fn hints_action_parses() {
         let f = global(r#"";" = { name = "Click", hints = "click" }"#);
-        assert_eq!(f.chords[";"].action, Action::Hints(Mouse::Click));
+        assert_eq!(f.chords[";"].action, Action::Hints(Hint { click: Mouse::Click, taskbar: false }));
+    }
+
+    #[test]
+    fn hints_on_taskbar_parses_and_on_needs_hints() {
+        let f = global(r#""/b" = { name = "Taskbar", hints = "click", on = "taskbar" }"#);
+        assert_eq!(f.chords["/b"].action, Action::Hints(Hint { click: Mouse::Click, taskbar: true }));
+        let (_, errors) = parse_file(
+            "g.toml",
+            "name = \"G\"\n[chords]\n\"/a\" = { name = \"x\", shell = \"x\", on = \"taskbar\" }\n\"/b\" = { name = \"x\", hints = \"click\", on = \"desk\" }\n",
+        );
+        assert_eq!(
+            errors,
+            vec![
+                "g.toml: chord '/a': 'on' only goes together with 'hints'",
+                "g.toml: chord '/b': on \"desk\" must be taskbar",
+            ]
+        );
     }
 
     #[test]
@@ -648,9 +684,10 @@ mod tests {
 "/e" = { name = "Explorer", shortcut = "win+e" }"#,
         )];
         let find = |chord| hint_prefix(&files, "x.exe", "", chord);
-        assert_eq!(find(";"), Some((1, Mouse::Click)));
-        assert_eq!(find(";aj"), Some((1, Mouse::Click)));
-        assert_eq!(find("'s"), Some((1, Mouse::RightClick)));
+        let hint = |click| Hint { click, taskbar: false };
+        assert_eq!(find(";"), Some((1, hint(Mouse::Click))));
+        assert_eq!(find(";aj"), Some((1, hint(Mouse::Click))));
+        assert_eq!(find("'s"), Some((1, hint(Mouse::RightClick))));
         assert_eq!(find("/e"), None);
         assert_eq!(find(""), None);
     }

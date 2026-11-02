@@ -25,7 +25,7 @@ sequenceDiagram
 
 | # | Step | Where |
 | - | ---- | ----- |
-| 1 | Typing exactly a hint chord (`;`, `'`) opens labels; Caps repeat and Shift reopen them after a click | `src/win.rs:256`, `src/win.rs:278`, `src/config.rs:193` |
+| 1 | Typing exactly a hint chord (`;`, `'`) opens labels; Caps repeat and Shift reopen them after a click | `src/win.rs:256`, `src/win.rs:278`, `src/config.rs:200` |
 | 2 | The panel is hidden synchronously before the scan | `src/win.rs:333`, `src/panel.rs:162` |
 | 3 | Up to 3 reads (0, 300, 600 ms) while Electron rebuilds its tree | `src/win.rs:158` |
 | 4 | Chromium page windows get a wake-up `WM_GETOBJECT` | `src/uia.rs:219` |
@@ -35,7 +35,7 @@ sequenceDiagram
 | 8 | Parts of real controls and generic boxes around other clickables lose their label; cap 300 after filtering | `src/hints.rs:21` |
 | 9 | Prefix-free labels from `sadfjklewcmpgh` | `src/hints.rs:40` |
 | 10 | Labels drawn at each element's top-left on a click-through overlay | `src/panel.rs:574` |
-| 11 | Space up with a full label moves the pointer to the element centre and clicks | `src/win.rs:347`, `src/win.rs:203` |
+| 11 | Space up with a full label moves the pointer to the element centre and clicks | `src/win.rs:352`, `src/win.rs:203` |
 
 ## Failure modes
 
