@@ -46,7 +46,7 @@ use crate::{hints, uia};
 use crate::panel;
 use crate::window;
 use crate::keys::{Key, parse_shortcut};
-use crate::machine::{Effect, Machine, STORM_MAX, STORM_WINDOW_MS, Storm, VK_CAPITAL, VK_SPACE};
+use crate::machine::{Effect, Machine, STORM_MAX, STORM_WINDOW_MS, Storm, VK_CAPITAL, VK_SPACE, repeat_candidate};
 
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 const CAPS: [Key; 1] = [Key { vk: VK_CAPITAL, extended: false }];
@@ -280,8 +280,8 @@ pub fn run(chords_dir: PathBuf) {
     let mut storm = Storm::default();
     let started = Instant::now();
     let mut held: Option<Held> = None;
-    // The repeat chord already run while typing, so releasing Space must not run it once more.
-    let mut ran: Option<String> = None;
+    // (typed letters, chord) of the repeat chord run last, so releasing Space doesn't run it once more.
+    let mut ran: Option<(String, String)> = None;
     loop {
         let effect = match &mut held {
             Some(h) => match rx.recv_timeout(h.next.saturating_duration_since(Instant::now())) {
@@ -327,10 +327,11 @@ pub fn run(chords_dir: PathBuf) {
                     }
                 }
                 let Some(s) = &session else { continue };
-                if let Some(action) = s.repeat_action(&buffer).filter(|_| typed_letter) {
+                let candidate = repeat_candidate(ran.as_ref().map(|(t, c)| (t.as_str(), c.as_str())), &buffer);
+                if let Some(action) = s.repeat_action(&candidate).filter(|_| typed_letter) {
                     panel::hide();
-                    held = Some(Held::start(&buffer, action));
-                    ran = Some(buffer.clone());
+                    held = Some(Held::start(&candidate, action));
+                    ran = Some((buffer.clone(), candidate));
                     continue;
                 }
                 // Exactly a hint chord: show its labels.
@@ -377,7 +378,7 @@ pub fn run(chords_dir: PathBuf) {
             Effect::Fire(chord) => {
                 panel::hide();
                 let hint_chord = session.as_ref().is_some_and(|s| s.hint_prefix(chord.as_str()).is_some());
-                if ran.take().as_deref() == Some(chord.as_str()) {
+                if ran.take().is_some_and(|(typed, _)| typed == chord.as_str()) {
                     // Already ran while its letter was held.
                 } else if !click_hint(&mut hints, chord.as_str()) {
                     if hint_chord {

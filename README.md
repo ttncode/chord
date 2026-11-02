@@ -38,7 +38,7 @@ Inside chord mode:
 | `Esc` | Clear the letters |
 | `Caps Lock` | Run the typed chord and stay in chord mode; with nothing typed, run the last chord again (`/mj⇪⇪` scrolls down three times) |
 | `Shift` + letter | Run the typed letters plus this letter, keep the typed letters (`t` then `Shift`+`t`,`s`,`p` runs `tt`, `ts`, `tp`) |
-| `j` `k` `h` `l` (nothing typed) | Scroll down / up / left / right; hold to keep scrolling smoothly |
+| `j` `k` `h` `l` (nothing typed) | Scroll down / up / left / right. Tap again to scroll again (`j j j k`), or hold to glide |
 | Ctrl / Alt / Win + key | Passed to the app as a normal shortcut |
 
 Caps Lock alone still toggles Caps Lock. Space alone still types a space.
@@ -58,7 +58,7 @@ ca = { name = "Collapse folders", palette = "Collapse Folders in Explorer" }
 "/t" = { name = "Open Windows Terminal", shell = "wt" }
 ```
 
-Each chord has a `name` and exactly one action. Add `repeat = true` to run it as soon as its last letter is pressed and keep running it while that letter is held (scrolling glides in small steps; other actions repeat 10 times a second); releasing Space afterwards doesn't run it again.
+Each chord has a `name` and exactly one action. Add `repeat = true` to run it as soon as its last letter is pressed and keep running it while that letter is held (scrolling glides in small steps; other actions repeat 10 times a second); tapping its last letter again runs it again, and tapping another letter swaps the last letter (`/vk` then `j` runs `/vj`); releasing Space afterwards doesn't run it again.
 
 | Action | What it does | Example |
 |---|---|---|
@@ -167,7 +167,7 @@ Panel and tray:
 - [ ] Tray icon → "Open chords folder" opens the folder; "Start with Windows" toggles a check mark and survives a reboot; "Quit" exits.
 - [ ] Tray icon → "Check for updates" says the version is the latest, or offers the newer one; accepting installs it silently and chord starts again on its own.
 - [ ] Type `/` in chord mode: the last line lists `/d Desktop · /m Mouse · …` on the right, next to "N more"; typing `/w` hides it. `/th` and `/tl` move the tab in Chrome, Antigravity and Windows Terminal.
-- [ ] With nothing typed, holding `j` scrolls smoothly until `j` is let go; releasing Space doesn't scroll once more. Holding the last letter of `/vk` keeps raising the volume. Typing `g` then `j` fast (rollover) still scrolls.
+- [ ] With nothing typed, holding `j` scrolls smoothly until `j` is let go; releasing Space doesn't scroll once more. Holding the last letter of `/vk` keeps raising the volume. Typing `g` then `j` fast (rollover) still scrolls. Tapping `j j j k` scrolls down three times, then up once.
 - [ ] `/;` labels the taskbar buttons and tray icons; a label clicks it. `/'` right-clicks, e.g. chord's tray icon opens its menu.
 - [ ] Starting a second copy prints "chord is already running".
 

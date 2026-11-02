@@ -1,6 +1,6 @@
 # Flow: chord press
 
-Entrypoint: `src/win.rs:567`
+Entrypoint: `src/win.rs:568`
 
 ```mermaid
 sequenceDiagram
@@ -33,25 +33,25 @@ sequenceDiagram
 
 | # | Step | Where |
 | - | ---- | ----- |
-| 1 | The hook skips events tagged with `TAG`, and Caps Lock that is injected or pressed while a remote desktop or VM window is in front; the rest goes to the machine, inside `catch_unwind` | `src/win.rs:571`, `src/config.rs:223` |
+| 1 | The hook skips events tagged with `TAG`, and Caps Lock that is injected or pressed while a remote desktop or VM window is in front; the rest goes to the machine, inside `catch_unwind` | `src/win.rs:572`, `src/config.rs:223` |
 | 2 | The machine updates key state, recovers lost releases (1.5 s stale, 15 s idle), and returns block/pass plus an effect | `src/machine.rs:116` |
-| 3 | The hook hands the effect over without blocking | `src/win.rs:590` |
+| 3 | The hook hands the effect over without blocking | `src/win.rs:591` |
 | 4 | Caps Lock held + Space pressed enters chord mode | `src/machine.rs:169` |
 | 5 | `Enter` reads the chord files once for the panel and shows it | `src/win.rs:311`, `src/win.rs:119` |
 | 6 | Each letter sends `Show`; the panel narrows to matching chords | `src/win.rs:316`, `src/win.rs:127` |
-| 7 | Space up sends `Fire` with the typed chord; a hint chord goes to the label flow instead | `src/machine.rs:242`, `src/win.rs:377` |
-| 8 | `fire` re-reads the files and resolves the chord for the app and window title in front | `src/win.rs:445`, `src/config.rs:143` |
-| 9 | The action runs with Shift lifted if held | `src/win.rs:461`, `src/win.rs:507` |
-| 10 | Caps Lock up after a chord resyncs the Caps Lock light | `src/win.rs:634` |
+| 7 | Space up sends `Fire` with the typed chord; a hint chord goes to the label flow instead | `src/machine.rs:242`, `src/win.rs:378` |
+| 8 | `fire` re-reads the files and resolves the chord for the app and window title in front | `src/win.rs:446`, `src/config.rs:143` |
+| 9 | The action runs with Shift lifted if held | `src/win.rs:462`, `src/win.rs:508` |
+| 10 | Caps Lock up after a chord resyncs the Caps Lock light | `src/win.rs:635` |
 
 ## Failure modes
 
 | When | Result | Handled at |
 | --- | --- | --- |
-| No chord matches | console: `no chord '<chord>' for <exe> "<title>"` | `src/win.rs:445` |
+| No chord matches | console: `no chord '<chord>' for <exe> "<title>"` | `src/win.rs:446` |
 | A chord file has an error | bad chord or file skipped, error printed, others keep working | `src/config.rs:242` |
 | Space or Caps release lost (focus change, UAC) | machine assumes it after 1.5 s or 15 s idle | `src/machine.rs:116` |
-| Windows drops the hook (timeout, sleep) | reinstalled every 5 min and on unlock/resume | `src/win.rs:546`, `src/panel.rs:287` |
-| A panic in the hook | key passes through unchanged | `src/win.rs:578` |
-| Main thread busy, channel full (64) | effect dropped, hook stays alive | `src/win.rs:590` |
-| Another program feeds chord's keys back (30 effects in 2 s) | hook passes every key, message names the app in front, chord exits | `src/win.rs:301`, `src/win.rs:618`, `src/machine.rs:297` |
+| Windows drops the hook (timeout, sleep) | reinstalled every 5 min and on unlock/resume | `src/win.rs:547`, `src/panel.rs:287` |
+| A panic in the hook | key passes through unchanged | `src/win.rs:579` |
+| Main thread busy, channel full (64) | effect dropped, hook stays alive | `src/win.rs:591` |
+| Another program feeds chord's keys back (30 effects in 2 s) | hook passes every key, message names the app in front, chord exits | `src/win.rs:301`, `src/win.rs:619`, `src/machine.rs:297` |

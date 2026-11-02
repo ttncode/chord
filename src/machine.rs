@@ -295,6 +295,20 @@ fn is_modifier(vk: u16) -> bool {
     matches!(vk, 0xA0..=0xA5 | VK_LWIN | VK_RWIN)
 }
 
+/// The chord to try after `buffer` grew by one letter. `ran` is (typed letters, chord) of the last
+/// `repeat` chord run: one more letter re-runs that chord with its last letter swapped for the new
+/// one, so `j j k` scrolls down, down, up instead of looking up `jj` and `jjk`.
+pub fn repeat_candidate(ran: Option<(&str, &str)>, buffer: &str) -> String {
+    if let Some((typed, chord)) = ran {
+        if let Some(letter) = buffer.strip_prefix(typed).filter(|rest| rest.chars().count() == 1) {
+            let mut swapped = chord.to_string();
+            swapped.pop();
+            return swapped + letter;
+        }
+    }
+    buffer.to_string()
+}
+
 /// Every character `char_of` can produce; chord names in files must use only these.
 /// Effects (Caps Lock sends, chord runs) within `STORM_WINDOW_MS` that mean a feedback loop, not a
 /// person: like AutoHotkey's #MaxHotkeysPerInterval. A person tops out near 10 per second.
@@ -697,6 +711,17 @@ mod tests {
         press(&mut m, D);
         assert_eq!(release(&mut m, G), block(), "rollover: g let go after d was pressed");
         assert_eq!(release(&mut m, D), block_with(Effect::KeyUp));
+    }
+
+    #[test]
+    fn tapping_again_after_a_repeat_chord_reruns_it_or_swaps_its_last_letter() {
+        let ran = Some(("j", "j"));
+        assert_eq!(repeat_candidate(None, "j"), "j");
+        assert_eq!(repeat_candidate(ran, "jj"), "j");
+        assert_eq!(repeat_candidate(ran, "jk"), "k");
+        assert_eq!(repeat_candidate(Some(("jk", "k")), "jkk"), "k");
+        assert_eq!(repeat_candidate(Some(("/vk", "/vk")), "/vkj"), "/vj");
+        assert_eq!(repeat_candidate(ran, "jkx"), "jkx", "only one letter after the last run");
     }
 
     #[test]
