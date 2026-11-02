@@ -7,11 +7,6 @@ All notable changes to this project are documented here. The format follows [Kee
 ### Added
 
 - Starter chord `/sh` opens the hidden tray icons (the `^` by the clock): `Win+B`, then `Enter`.
-
-## [0.3.3] - 2026-11-02
-
-### Added
-
 - `on = "taskbar"` on a `hints` chord labels the taskbar (app buttons, tray icons, clock) instead of the window in front. Starter chords: `/;` clicks, `/'` right-clicks.
 
 ## [0.3.2] - 2026-11-02
@@ -75,7 +70,6 @@ First release. Windows x64; tested on Windows 10 22H2.
 - Elements an app draws without telling UI Automation (custom-drawn apps, Postman's ☰ and window buttons) get no label.
 - `chord.exe` is not signed; Windows SmartScreen may warn on first run.
 
-[0.3.3]: https://github.com/ttncode/chord/releases/tag/v0.3.3
 [0.3.3]: https://github.com/ttncode/chord/releases/tag/v0.3.3
 [0.3.2]: https://github.com/ttncode/chord/releases/tag/v0.3.2
 [0.3.1]: https://github.com/ttncode/chord/releases/tag/v0.3.1
