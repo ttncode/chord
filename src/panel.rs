@@ -492,14 +492,14 @@ fn render_panel() -> Option<(Canvas, POINT)> {
     let margin = s(style::SHADOW_BLUR) + s(style::SHADOW_DROP);
     let top = work.top + (work.bottom - work.top) / 5;
 
-    let group_line = usize::from(!view.groups.is_empty());
-    let room = ((work.bottom - top - margin - header - 2 * gap) / row - group_line as i32).max(1) as usize;
+    let room = ((work.bottom - top - margin - header - 2 * gap) / row).max(1) as usize;
     let mut rows: Vec<(String, String)> = view.rows.clone();
-    let more = rows.len().saturating_sub(room);
-    if more > 0 {
-        rows.truncate(room - 1);
-    }
-    let lines = ((rows.len() + usize::from(more > 0)).max(1) + group_line) as i32;
+    // The last line holds "N more" / "No chord …" on the left and the groups on the right.
+    let keep = if !view.groups.is_empty() || rows.len() > room { room - 1 } else { room };
+    let more = rows.len().saturating_sub(keep);
+    rows.truncate(keep);
+    let footer = more > 0 || rows.is_empty() || !view.groups.is_empty();
+    let lines = (rows.len() + usize::from(footer)) as i32;
     let height = header + 1 + 2 * gap + lines * row;
 
     let mut canvas = Canvas::new(width + 2 * margin, height + 2 * margin)?;
@@ -549,16 +549,22 @@ fn render_panel() -> Option<(Canvas, POINT)> {
         y += row;
     }
     let cell = RECT { left: head.left, top: y, right: head.right, bottom: y + row };
-    if more > 0 {
-        canvas.text(cell, &format!("{more} more"), small, colors.secondary, DT_LEFT | DT_VCENTER);
+    let note = if more > 0 {
+        Some((format!("{more} more"), small))
     } else if rows.is_empty() {
-        canvas.text(cell, "No chord starts with these keys", body, colors.secondary, DT_LEFT | DT_VCENTER);
+        Some(("No chord starts with these keys".to_string(), body))
+    } else {
+        None
+    };
+    let mut groups_left = cell.left;
+    if let Some((text, font)) = &note {
+        canvas.text(cell, text, *font, colors.secondary, DT_LEFT | DT_VCENTER);
+        groups_left += canvas.measure(text, *font) + s(24);
     }
-    if group_line > 0 {
-        let below = if more > 0 || rows.is_empty() { y + row } else { y };
+    if !view.groups.is_empty() {
         let text = view.groups.iter().map(|(prefix, name)| format!("{prefix} {name}")).collect::<Vec<_>>().join("   ·   ");
-        let cell = RECT { top: below, bottom: below + row, ..cell };
-        canvas.text(cell, &text, small, colors.secondary, DT_LEFT | DT_VCENTER | DT_END_ELLIPSIS);
+        let area = RECT { left: groups_left, ..cell };
+        canvas.text(area, &text, small, colors.secondary, DT_RIGHT | DT_VCENTER | DT_END_ELLIPSIS);
     }
 
     let at = POINT { x: work.left + (work.right - work.left - width) / 2 - margin, y: top - margin };
