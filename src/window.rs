@@ -97,14 +97,26 @@ pub fn mouse(action: Mouse) {
             &[MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP, MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP],
             0,
         ),
-        Mouse::ScrollUp => send_mouse(&[MOUSEEVENTF_WHEEL], 3 * WHEEL_STEP),
-        Mouse::ScrollDown => send_mouse(&[MOUSEEVENTF_WHEEL], -3 * WHEEL_STEP),
-        // Horizontal wheel: positive scrolls right.
-        Mouse::ScrollLeft => send_mouse(&[MOUSEEVENTF_HWHEEL], -3 * WHEEL_STEP),
-        Mouse::ScrollRight => send_mouse(&[MOUSEEVENTF_HWHEEL], 3 * WHEEL_STEP),
+        Mouse::ScrollUp | Mouse::ScrollDown | Mouse::ScrollLeft | Mouse::ScrollRight => {
+            scroll(action, 3 * WHEEL_STEP);
+        }
         Mouse::Back => send_mouse(&[MOUSEEVENTF_XDOWN, MOUSEEVENTF_XUP], XBUTTON1),
         Mouse::Forward => send_mouse(&[MOUSEEVENTF_XDOWN, MOUSEEVENTF_XUP], XBUTTON2),
     }
+}
+
+/// Scrolls by `amount` (120 = one wheel notch) in `action`'s direction; false if `action` isn't a scroll.
+pub fn scroll(action: Mouse, amount: i32) -> bool {
+    // Horizontal wheel: positive scrolls right.
+    let (flag, sign) = match action {
+        Mouse::ScrollUp => (MOUSEEVENTF_WHEEL, 1),
+        Mouse::ScrollDown => (MOUSEEVENTF_WHEEL, -1),
+        Mouse::ScrollLeft => (MOUSEEVENTF_HWHEEL, -1),
+        Mouse::ScrollRight => (MOUSEEVENTF_HWHEEL, 1),
+        _ => return false,
+    };
+    send_mouse(&[flag], sign * amount);
+    true
 }
 
 /// One SendInput call with these mouse events at the current pointer position.

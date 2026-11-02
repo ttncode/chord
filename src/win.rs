@@ -11,7 +11,7 @@ use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 use std::sync::atomic::{AtomicBool, AtomicIsize, AtomicU32, Ordering};
-use std::sync::mpsc::{SyncSender, sync_channel};
+use std::sync::mpsc::{RecvTimeoutError, SyncSender, sync_channel};
 use std::time::{Duration, Instant};
 
 use windows::Win32::Foundation::{
@@ -140,9 +140,49 @@ impl Session {
         }
     }
 
+    /// The action of `chord` if it is a `repeat` chord here.
+    fn repeat_action(&self, chord: &str) -> Option<Action> {
+        let found = config::resolve(&self.files, &self.app, &self.title, chord)?;
+        found.chord.repeat.then_some(found.chord.action)
+    }
+
     /// Length of the hint chord `chord` starts with (`;` in `;aj`), and its click kind.
     fn hint_prefix(&self, chord: &str) -> Option<(usize, Hint)> {
         config::hint_prefix(&self.files, &self.app, &self.title, chord)
+    }
+}
+
+/// A `repeat` chord whose last letter is held: it runs again at `next` until the letter is let go.
+struct Held {
+    action: Action,
+    next: Instant,
+}
+
+/// Scrolling repeats fast in small steps so it glides; other actions repeat like a held key.
+const SCROLL_DELAY: Duration = Duration::from_millis(200);
+const SCROLL_EVERY: Duration = Duration::from_millis(15);
+const SCROLL_STEP: i32 = 40;
+const REPEAT_DELAY: Duration = Duration::from_millis(400);
+const REPEAT_EVERY: Duration = Duration::from_millis(100);
+
+impl Held {
+    fn start(chord: &str, action: Action) -> Self {
+        say!("  -> {chord} (held)");
+        without_shift(|| run_action(&action));
+        let delay = if matches!(action, Action::Mouse(_)) { SCROLL_DELAY } else { REPEAT_DELAY };
+        Self { action, next: Instant::now() + delay }
+    }
+
+    fn tick(&mut self) {
+        let smooth = match &self.action {
+            Action::Mouse(m) => window::scroll(*m, SCROLL_STEP),
+            _ => false,
+        };
+        if !smooth {
+            without_shift(|| run_action(&self.action));
+        }
+        // From now, not from the missed deadline: a slow action must not queue a burst of catch-up runs.
+        self.next = Instant::now() + if smooth { SCROLL_EVERY } else { REPEAT_EVERY };
     }
 }
 
@@ -239,13 +279,33 @@ pub fn run(chords_dir: PathBuf) {
     let mut buffer = String::new();
     let mut storm = Storm::default();
     let started = Instant::now();
-    for effect in rx {
+    let mut held: Option<Held> = None;
+    // The repeat chord already run while typing, so releasing Space must not run it once more.
+    let mut ran: Option<String> = None;
+    loop {
+        let effect = match &mut held {
+            Some(h) => match rx.recv_timeout(h.next.saturating_duration_since(Instant::now())) {
+                Ok(effect) => effect,
+                Err(RecvTimeoutError::Timeout) => {
+                    h.tick();
+                    continue;
+                }
+                Err(RecvTimeoutError::Disconnected) => break,
+            },
+            None => match rx.recv() {
+                Ok(effect) => effect,
+                Err(_) => break,
+            },
+        };
+        held = None;
         let ours = matches!(effect, Effect::ToggleCaps | Effect::ResyncCapsLight | Effect::Fire(_) | Effect::FireKeep(_));
         if ours && storm.hit(started.elapsed().as_millis() as u64) {
             stop_for_loop();
         }
         match effect {
+            Effect::KeyUp => {}
             Effect::Enter => {
+                ran = None;
                 buffer.clear();
                 end_hints(&mut hints);
                 let s = Session::start(&chords_dir);
@@ -254,6 +314,7 @@ pub fn run(chords_dir: PathBuf) {
                 show("");
             }
             Effect::Show(chord) => {
+                let typed_letter = chord.as_str().len() > buffer.len();
                 buffer = chord.as_str().to_string();
                 show(&buffer);
                 if let Some(h) = &hints {
@@ -266,6 +327,12 @@ pub fn run(chords_dir: PathBuf) {
                     }
                 }
                 let Some(s) = &session else { continue };
+                if let Some(action) = s.repeat_action(&buffer).filter(|_| typed_letter) {
+                    panel::hide();
+                    held = Some(Held::start(&buffer, action));
+                    ran = Some(buffer.clone());
+                    continue;
+                }
                 // Exactly a hint chord: show its labels.
                 hints = match s.hint_prefix(&buffer) {
                     Some((len, kind)) if len == buffer.len() => open_hints(&buffer, "", kind),
@@ -310,7 +377,9 @@ pub fn run(chords_dir: PathBuf) {
             Effect::Fire(chord) => {
                 panel::hide();
                 let hint_chord = session.as_ref().is_some_and(|s| s.hint_prefix(chord.as_str()).is_some());
-                if !click_hint(&mut hints, chord.as_str()) {
+                if ran.take().as_deref() == Some(chord.as_str()) {
+                    // Already ran while its letter was held.
+                } else if !click_hint(&mut hints, chord.as_str()) {
                     if hint_chord {
                         say!("  -> no labels on screen to pick from");
                     } else {

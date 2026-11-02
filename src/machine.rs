@@ -58,6 +58,8 @@ pub enum Effect {
     FireKeep(Chord),
     Cancel,
     Quit,
+    /// The newest letter typed in chord mode was let go: a held `repeat` chord stops.
+    KeyUp,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -86,6 +88,8 @@ pub struct Machine {
     /// Only the most recently pressed key auto-repeats, so silence proves a lost release only for it.
     last_down: u16,
     last_event_ms: u32,
+    /// The letter typed last; only its release ends a held `repeat` chord.
+    last_letter: u16,
 }
 
 /// A held key that was pressed last auto-repeats well within this; longer silence means its release was lost.
@@ -109,6 +113,7 @@ impl Machine {
             last_caps_ms: 0,
             last_down: 0,
             last_event_ms: 0,
+            last_letter: 0,
         }
     }
 
@@ -231,6 +236,7 @@ impl Machine {
                 Some(c) if self.buffer.len < CHORD_CAP => {
                     self.buffer.bytes[self.buffer.len] = c;
                     self.buffer.len += 1;
+                    self.last_letter = vk;
                     self.block(i, Some(Effect::Show(self.buffer)))
                 }
                 Some(_) => self.block(i, None),
@@ -253,6 +259,9 @@ impl Machine {
             return PASS;
         }
         self.blocked[i] = false;
+        if self.chord_mode && vk == self.last_letter {
+            return Decision { block: true, effect: Some(Effect::KeyUp) };
+        }
         if vk == VK_CAPITAL {
             self.caps_held = false;
             // The physical press flips the Caps light below the hook, even though we swallowed it.
@@ -388,7 +397,7 @@ mod tests {
     fn letters_in_chord_mode_are_blocked_and_shown() {
         let mut m = in_chord_mode();
         assert_eq!(press(&mut m, G), block_with(Effect::Show(chord("g"))));
-        assert_eq!(release(&mut m, G), block());
+        assert_eq!(release(&mut m, G), block_with(Effect::KeyUp));
         assert_eq!(press(&mut m, D), block_with(Effect::Show(chord("gd"))));
     }
 
@@ -671,6 +680,23 @@ mod tests {
             release(&mut m, G);
         }
         assert_eq!(press(&mut m, D), block());
+    }
+
+    #[test]
+    fn letter_release_in_chord_mode_reports_key_up() {
+        let mut m = in_chord_mode();
+        press(&mut m, 0x4A);
+        assert_eq!(press(&mut m, 0x4A), block(), "auto-repeat adds nothing");
+        assert_eq!(release(&mut m, 0x4A), block_with(Effect::KeyUp));
+    }
+
+    #[test]
+    fn only_the_newest_letter_reports_key_up() {
+        let mut m = in_chord_mode();
+        press(&mut m, G);
+        press(&mut m, D);
+        assert_eq!(release(&mut m, G), block(), "rollover: g let go after d was pressed");
+        assert_eq!(release(&mut m, D), block_with(Effect::KeyUp));
     }
 
     #[test]

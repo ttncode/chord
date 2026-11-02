@@ -43,6 +43,8 @@ pub enum Mouse {
 pub struct Chord {
     pub name: String,
     pub action: Action,
+    /// Runs as soon as its last letter is pressed, and again and again while that letter is held.
+    pub repeat: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -320,7 +322,7 @@ fn fill_chord(chord: &Chord, captures: &regex::Captures) -> Chord {
         Action::Palette(s) => Action::Palette(fill(s, captures)),
         other => other.clone(),
     };
-    Chord { name: fill(&chord.name, captures), action }
+    Chord { name: fill(&chord.name, captures), action, repeat: chord.repeat }
 }
 
 fn parse_chord(key: &str, value: &toml::Value) -> Result<(Chord, Option<regex::Regex>), String> {
@@ -332,7 +334,12 @@ fn parse_chord(key: &str, value: &toml::Value) -> Result<(Chord, Option<regex::R
     let mut actions = Vec::new();
     let mut launch = None;
     let mut on = None;
+    let mut repeat = false;
     for (field, value) in fields {
+        if field == "repeat" {
+            repeat = value.as_bool().ok_or("'repeat' must be true or false")?;
+            continue;
+        }
         let toml::Value::String(s) = value else {
             return Err(format!("'{field}' must be a string"));
         };
@@ -386,7 +393,7 @@ fn parse_chord(key: &str, value: &toml::Value) -> Result<(Chord, Option<regex::R
         }
     }
     match <[Action; 1]>::try_from(actions) {
-        Ok([action]) => Ok((Chord { name, action }, pattern)),
+        Ok([action]) => Ok((Chord { name, action, repeat }, pattern)),
         Err(_) => Err("needs exactly one of 'shortcut', 'shell', 'palette', 'focus', 'mouse', 'hints'".into()),
     }
 }
@@ -657,6 +664,16 @@ mod tests {
     fn hints_action_parses() {
         let f = global(r#"";" = { name = "Click", hints = "click" }"#);
         assert_eq!(f.chords[";"].action, Action::Hints(Hint { click: Mouse::Click, taskbar: false }));
+    }
+
+    #[test]
+    fn repeat_parses_and_must_be_true_or_false() {
+        let f = global(r#""j" = { name = "Down", mouse = "scroll-down", repeat = true }
+"/e" = { name = "Explorer", shortcut = "win+e" }"#);
+        assert!(f.chords["j"].repeat);
+        assert!(!f.chords["/e"].repeat);
+        let (_, errors) = parse_file("g.toml", "name = \"G\"\n[chords]\n\"j\" = { name = \"x\", shell = \"x\", repeat = \"yes\" }\n");
+        assert_eq!(errors, vec!["g.toml: chord 'j': 'repeat' must be true or false"]);
     }
 
     #[test]

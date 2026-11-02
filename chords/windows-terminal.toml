@@ -6,10 +6,10 @@ nt = { name = "New tab", shortcut = "ctrl+shift+t" }
 cx = { name = "Close pane (closes the tab when it has one pane)", shortcut = "ctrl+shift+w" }
 # Next/previous in tab order only if Settings > Interaction > "Tab switcher interface style" is "In order";
 # with "Most recently used" they jump to the last-used tab.
-tn = { name = "Next tab", shortcut = "ctrl+tab" }
-tp = { name = "Previous tab", shortcut = "ctrl+shift+tab" }
+tn = { name = "Next tab", shortcut = "ctrl+tab", repeat = true }
+tp = { name = "Previous tab", shortcut = "ctrl+shift+tab", repeat = true }
 sv = { name = "Split pane right", shortcut = "alt+shift+plus" }
 sh = { name = "Split pane down", shortcut = "alt+shift+-" }
 # Ctrl+Shift+PgUp/PgDn scroll the buffer here, so these override the global tab moves.
-"/th" = { name = "Tab: move left", palette = "Move tab backward" }
-"/tl" = { name = "Tab: move right", palette = "Move tab forward" }
+"/th" = { name = "Tab: move left", palette = "Move tab backward", repeat = true }
+"/tl" = { name = "Tab: move right", palette = "Move tab forward", repeat = true }

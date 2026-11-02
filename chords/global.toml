@@ -40,8 +40,8 @@ name = "Global"
 "/wq" = { name = "Window: close", shortcut = "alt+f4" }
 
 # Virtual desktops
-"/dh" = { name = "Desktop: previous", shortcut = "win+ctrl+left" }
-"/dl" = { name = "Desktop: next", shortcut = "win+ctrl+right" }
+"/dh" = { name = "Desktop: previous", shortcut = "win+ctrl+left", repeat = true }
+"/dl" = { name = "Desktop: next", shortcut = "win+ctrl+right", repeat = true }
 "/dn" = { name = "Desktop: new", shortcut = "win+ctrl+d" }
 "/dx" = { name = "Desktop: close", shortcut = "win+ctrl+f4" }
 
@@ -63,8 +63,8 @@ name = "Global"
 "/r" = { name = "Translate the selection (DeepL)", shortcut = "ctrl+c ctrl+c" }
 
 # Media
-"/vj" = { name = "Volume down", shortcut = "volumedown" }
-"/vk" = { name = "Volume up", shortcut = "volumeup" }
+"/vj" = { name = "Volume down", shortcut = "volumedown", repeat = true }
+"/vk" = { name = "Volume up", shortcut = "volumeup", repeat = true }
 "/vm" = { name = "Mute", shortcut = "volumemute" }
 "/vp" = { name = "Play / pause", shortcut = "playpause" }
 "/vl" = { name = "Next track", shortcut = "nexttrack" }
@@ -75,18 +75,24 @@ name = "Global"
 "/mr" = { name = "Mouse: right-click", mouse = "right-click" }
 "/md" = { name = "Mouse: double-click", mouse = "double-click" }
 "/mm" = { name = "Mouse: middle-click", mouse = "middle-click" }
-"/mj" = { name = "Mouse: scroll down", mouse = "scroll-down" }
-"/mk" = { name = "Mouse: scroll up", mouse = "scroll-up" }
-"/mh" = { name = "Mouse: scroll left", mouse = "scroll-left" }
-"/ml" = { name = "Mouse: scroll right", mouse = "scroll-right" }
+"/mj" = { name = "Mouse: scroll down", mouse = "scroll-down", repeat = true }
+"/mk" = { name = "Mouse: scroll up", mouse = "scroll-up", repeat = true }
+"/mh" = { name = "Mouse: scroll left", mouse = "scroll-left", repeat = true }
+"/ml" = { name = "Mouse: scroll right", mouse = "scroll-right", repeat = true }
 "/mp" = { name = "Mouse: back", mouse = "back" }
 "/mn" = { name = "Mouse: forward", mouse = "forward" }
 "/mt" = { name = "Go to top", shortcut = "ctrl+home" }
 "/mb" = { name = "Go to bottom", shortcut = "ctrl+end" }
 
+# Scroll with nothing typed: hold j/k/h/l to keep scrolling (Vim directions). No chord may start with these letters.
+"j" = { name = "Scroll down (hold)", mouse = "scroll-down", repeat = true }
+"k" = { name = "Scroll up (hold)", mouse = "scroll-up", repeat = true }
+"h" = { name = "Scroll left (hold)", mouse = "scroll-left", repeat = true }
+"l" = { name = "Scroll right (hold)", mouse = "scroll-right", repeat = true }
+
 # Tabs: Chrome, Firefox, Antigravity (VS Code). Windows Terminal has its own in windows-terminal.toml.
-"/th" = { name = "Tab: move left", shortcut = "ctrl+shift+pageup" }
-"/tl" = { name = "Tab: move right", shortcut = "ctrl+shift+pagedown" }
+"/th" = { name = "Tab: move left", shortcut = "ctrl+shift+pageup", repeat = true }
+"/tl" = { name = "Tab: move right", shortcut = "ctrl+shift+pagedown", repeat = true }
 
 # Hint labels: type the chord, then the label's letters, release Space to click it
 ";" = { name = "Click (labels)", hints = "click" }

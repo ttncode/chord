@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/).
 
+## [0.3.4] - 2026-11-02
+
+### Added
+
+- `repeat = true` on a chord runs it when its last letter is pressed and keeps running it while the letter is held. Scrolling glides in small steps; other actions repeat 10 times a second.
+- With nothing typed, `j` `k` `h` `l` scroll down, up, left and right; hold to keep scrolling. Volume (`/vj` `/vk`), tab (`/th` `/tl`, Windows Terminal `tn` `tp`), desktop (`/dh` `/dl`) and mouse scroll (`/mj` …) chords repeat while held.
+
 ## [0.3.3] - 2026-11-02
 
 ### Added
@@ -70,6 +77,7 @@ First release. Windows x64; tested on Windows 10 22H2.
 - Elements an app draws without telling UI Automation (custom-drawn apps, Postman's ☰ and window buttons) get no label.
 - `chord.exe` is not signed; Windows SmartScreen may warn on first run.
 
+[0.3.4]: https://github.com/ttncode/chord/releases/tag/v0.3.4
 [0.3.3]: https://github.com/ttncode/chord/releases/tag/v0.3.3
 [0.3.2]: https://github.com/ttncode/chord/releases/tag/v0.3.2
 [0.3.1]: https://github.com/ttncode/chord/releases/tag/v0.3.1
