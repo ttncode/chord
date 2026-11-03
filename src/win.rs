@@ -254,8 +254,12 @@ impl Hints {
     fn click(&self, label: &str) {
         match self.targets.iter().find(|(_, l)| l == label) {
             Some((r, _)) => {
+                let (x, y) = ((r.0 + r.2) / 2, (r.1 + r.3) / 2);
+                if uia::DEBUG.load(std::sync::atomic::Ordering::Relaxed) {
+                    say!("  -> {label} at ({x}, {y}): {}", uia::describe_at(x, y));
+                }
                 unsafe {
-                    let _ = SetCursorPos((r.0 + r.2) / 2, (r.1 + r.3) / 2);
+                    let _ = SetCursorPos(x, y);
                 }
                 without_shift(|| window::mouse(self.kind));
             }

@@ -341,6 +341,22 @@ fn wake_chromium(hwnd: HWND) -> Vec<(HWND, String)> {
     classes
 }
 
+/// Debug: the element under screen point (`x`, `y`), as "type name".
+pub fn describe_at(x: i32, y: i32) -> String {
+    unsafe {
+        let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
+        let Ok(uia) = CoCreateInstance::<_, IUIAutomation>(&CUIAutomation, None, CLSCTX_INPROC_SERVER) else { return "?".into() };
+        match uia.ElementFromPoint(POINT { x, y }) {
+            Ok(e) => format!(
+                "type {} {:?}",
+                e.CurrentControlType().unwrap_or_default().0,
+                e.CurrentName().map(|n| n.to_string()).unwrap_or_default()
+            ),
+            Err(e) => format!("? {e}"),
+        }
+    }
+}
+
 /// True when the element found at `element`'s centre is `element` or inside it: nothing covers it.
 fn hit_at_center(uia: &IUIAutomation, element: &IUIAutomationElement) -> bool {
     unsafe {
