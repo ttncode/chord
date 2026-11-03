@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/).
 
+## [0.3.6] - 2026-11-03
+
+### Added
+
+- `hints = "middle-click"` middle-clicks the chosen label, so a link opens in a new background tab. Starter chord: `[`.
+
 ## [0.3.5] - 2026-11-02
 
 ### Changed
@@ -83,6 +89,7 @@ First release. Windows x64; tested on Windows 10 22H2.
 - Elements an app draws without telling UI Automation (custom-drawn apps, Postman's ☰ and window buttons) get no label.
 - `chord.exe` is not signed; Windows SmartScreen may warn on first run.
 
+[0.3.6]: https://github.com/ttncode/chord/releases/tag/v0.3.6
 [0.3.5]: https://github.com/ttncode/chord/releases/tag/v0.3.5
 [0.3.4]: https://github.com/ttncode/chord/releases/tag/v0.3.4
 [0.3.3]: https://github.com/ttncode/chord/releases/tag/v0.3.3
