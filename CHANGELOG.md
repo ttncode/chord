@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/).
 
+## [0.3.9] - 2026-11-03
+
+### Fixed
+
+- `/ms` also labels navigation areas, so web sidebars Chrome doesn't report as scrollable (ChatGPT's chat list) can be picked; `j` `k` then scroll them.
+
 ## [0.3.8] - 2026-11-03
 
 ### Fixed
@@ -102,6 +108,7 @@ First release. Windows x64; tested on Windows 10 22H2.
 - Elements an app draws without telling UI Automation (custom-drawn apps, Postman's ☰ and window buttons) get no label.
 - `chord.exe` is not signed; Windows SmartScreen may warn on first run.
 
+[0.3.9]: https://github.com/ttncode/chord/releases/tag/v0.3.9
 [0.3.8]: https://github.com/ttncode/chord/releases/tag/v0.3.8
 [0.3.7]: https://github.com/ttncode/chord/releases/tag/v0.3.7
 [0.3.6]: https://github.com/ttncode/chord/releases/tag/v0.3.6
