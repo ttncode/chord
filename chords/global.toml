@@ -97,5 +97,6 @@ name = "Global"
 # Hint labels: type the chord, then the label's letters, release Space to click it
 ";" = { name = "Click (labels)", hints = "click" }
 "'" = { name = "Right-click (labels)", hints = "right-click" }
+"[" = { name = "Middle-click / new tab (labels)", hints = "middle-click" }
 "/;" = { name = "Taskbar: click (labels)", hints = "click", on = "taskbar" }
 "/'" = { name = "Taskbar: right-click (labels)", hints = "right-click", on = "taskbar" }
