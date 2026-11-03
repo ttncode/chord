@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/).
 
+## [0.3.8] - 2026-11-03
+
+### Fixed
+
+- `/ms` labels only areas at least 80 px on each side that hide a real part of their content. Chrome calls anything that overflows by a pixel scrollable, so prompt boxes, tables and message blocks got labels too.
+- `--debug-hints` also lists every element that reports a scroll pattern when `/ms` runs.
+
 ## [0.3.7] - 2026-11-03
 
 ### Added
@@ -95,6 +102,7 @@ First release. Windows x64; tested on Windows 10 22H2.
 - Elements an app draws without telling UI Automation (custom-drawn apps, Postman's ☰ and window buttons) get no label.
 - `chord.exe` is not signed; Windows SmartScreen may warn on first run.
 
+[0.3.8]: https://github.com/ttncode/chord/releases/tag/v0.3.8
 [0.3.7]: https://github.com/ttncode/chord/releases/tag/v0.3.7
 [0.3.6]: https://github.com/ttncode/chord/releases/tag/v0.3.6
 [0.3.5]: https://github.com/ttncode/chord/releases/tag/v0.3.5
