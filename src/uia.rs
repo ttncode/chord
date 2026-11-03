@@ -29,7 +29,7 @@ use windows::core::{Result, VARIANT};
 
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use crate::hints::Rect;
+use crate::hints::{Kind, Rect};
 
 /// Set by `--debug-hints`: every scan writes what UI Automation reported to `hints-debug.txt`.
 pub static DEBUG: AtomicBool = AtomicBool::new(false);
@@ -52,8 +52,8 @@ const CONTROLS: [UIA_CONTROLTYPE_ID; 13] = [
 ];
 
 /// Rectangles (physical screen pixels) of clickable elements in `hwnd` that no other window covers,
-/// each with whether it is a real control.
-pub fn clickable_rects(hwnd: HWND) -> Result<Vec<(Rect, bool)>> {
+/// each with what kind of control it is.
+pub fn clickable_rects(hwnd: HWND) -> Result<Vec<(Rect, Kind)>> {
     unsafe {
         // Safe to repeat: later calls on this thread just return S_FALSE.
         let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
@@ -111,7 +111,7 @@ pub fn clickable_rects(hwnd: HWND) -> Result<Vec<(Rect, bool)>> {
         let app = crate::window::pid_of(hwnd);
         let debug = DEBUG.load(Ordering::Relaxed);
         let mut log = String::new();
-        let mut rects_in = |scope: &IUIAutomationElement| -> Result<Vec<(Rect, bool)>> {
+        let mut rects_in = |scope: &IUIAutomationElement| -> Result<Vec<(Rect, Kind)>> {
             let found = scope.FindAllBuildCache(TreeScope_Descendants, &condition, &cache)?;
             let mut rects = Vec::new();
             for i in 0..found.Length()? {
@@ -128,7 +128,14 @@ pub fn clickable_rects(hwnd: HWND) -> Result<Vec<(Rect, bool)>> {
                     log += &format!("type {:5}  {r:?}  {name:?}{fate}\n", kind.0);
                 }
                 if shown {
-                    rects.push(((rect.left, rect.top, rect.right, rect.bottom), CONTROLS.contains(&kind)));
+                    let kind = if kind == UIA_TreeItemControlTypeId || kind == UIA_ListItemControlTypeId {
+                        Kind::Item
+                    } else if CONTROLS.contains(&kind) {
+                        Kind::Control
+                    } else {
+                        Kind::Generic
+                    };
+                    rects.push(((rect.left, rect.top, rect.right, rect.bottom), kind));
                 }
             }
             Ok(rects)

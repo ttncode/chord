@@ -13,27 +13,51 @@ const MAX_LABELS: usize = 300;
 /// Element rectangles closer than this (pixels) on every edge are the same target.
 const SAME: i32 = 6;
 
+/// An item row is cut to this many times its height from its left edge before its middle is clicked.
+const ITEM_WIDTH_PER_HEIGHT: i32 = 4;
+
 /// Smallest scroll area side worth a label, in pixels.
 const MIN_AREA: i32 = 80;
 
 /// Areas showing at least this percentage of their content barely scroll.
 const MAX_SHOWN: f64 = 95.0;
 
-/// The rectangles worth a label, top-left first. Each comes with whether it is a real control
-/// (button, link, list row…) rather than a generic clickable box. Containers (lists, panes) are
-/// already left out by type. Anything inside a real control is a part of it (a file row's cells, a
-/// button's text) and gets no label; a generic box holding other clickable things gives way to them
-/// (Vimium's rule for web pages). Near-duplicates get one.
-pub fn targets(elements: Vec<(Rect, bool)>) -> Vec<Rect> {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Kind {
+    /// Clickable, but no known control type (custom, text, image).
+    Generic,
+    /// Button, link, file row…
+    Control,
+    /// Tree or list item: an open one's box also covers the items nested in it.
+    Item,
+}
+
+/// The rectangles worth a label, top-left first. Containers (lists, panes) are already left out by
+/// type. Anything inside a real control is a part of it (a file row's cells, a button's text) and
+/// gets no label, except items nested in an open item (a folder's files), which keep theirs while
+/// the open item is cut down to its own row above them. A generic box holding other clickable
+/// things gives way to them (Vimium's rule for web pages). Near-duplicates get one.
+pub fn targets(elements: Vec<(Rect, Kind)>) -> Vec<Rect> {
     let same = |a: Rect, b: Rect| {
         (a.0 - b.0).abs() <= SAME && (a.1 - b.1).abs() <= SAME && (a.2 - b.2).abs() <= SAME && (a.3 - b.3).abs() <= SAME
     };
     let contains = |a: Rect, b: Rect| a.0 <= b.0 && a.1 <= b.1 && a.2 >= b.2 && a.3 >= b.3 && !same(a, b);
-    let elements: Vec<(Rect, bool)> = elements.into_iter().filter(|(r, _)| r.2 > r.0 && r.3 > r.1).collect();
+    let elements: Vec<(Rect, Kind)> = elements.into_iter().filter(|(r, _)| r.2 > r.0 && r.3 > r.1).collect();
     let mut kept: Vec<Rect> = Vec::new();
-    for &(r, control) in &elements {
-        let part_of_a_control = elements.iter().any(|&(outer, c)| c && contains(outer, r));
-        let box_around_others = !control && elements.iter().any(|&(inner, _)| contains(r, inner));
+    for &(mut r, kind) in &elements {
+        let part_of_a_control = elements
+            .iter()
+            .any(|&(outer, k)| k != Kind::Generic && !(k == Kind::Item && kind == Kind::Item) && contains(outer, r));
+        let box_around_others = kind == Kind::Generic && elements.iter().any(|&(inner, _)| contains(r, inner));
+        if kind == Kind::Item {
+            let nested_top = elements.iter().filter(|&&(inner, k)| k == Kind::Item && contains(r, inner) && inner.1 > r.1).map(|(inner, _)| inner.1).min();
+            if let Some(top) = nested_top {
+                r.3 = top;
+            }
+            // The click goes to the middle: keep it on the name, as a row can run past the visible
+            // columns (Explorer's details view) or far beyond its text.
+            r.2 = r.2.min(r.0 + ITEM_WIDTH_PER_HEIGHT * (r.3 - r.1));
+        }
         if !part_of_a_control && !box_around_others && !kept.iter().any(|&k| same(k, r)) {
             kept.push(r);
         }
@@ -87,11 +111,14 @@ pub fn labels(count: usize) -> Vec<String> {
 mod tests {
     use super::*;
 
-    fn control(r: Rect) -> (Rect, bool) {
-        (r, true)
+    fn control(r: Rect) -> (Rect, Kind) {
+        (r, Kind::Control)
     }
-    fn generic(r: Rect) -> (Rect, bool) {
-        (r, false)
+    fn generic(r: Rect) -> (Rect, Kind) {
+        (r, Kind::Generic)
+    }
+    fn item(r: Rect) -> (Rect, Kind) {
+        (r, Kind::Item)
     }
 
     #[test]
@@ -146,6 +173,22 @@ mod tests {
     fn text_inside_a_button_gets_no_label_of_its_own() {
         let (button, text) = ((0, 0, 100, 30), (20, 8, 80, 22));
         assert_eq!(targets(vec![control(button), generic(text)]), vec![button]);
+    }
+
+    #[test]
+    fn items_nested_in_an_open_tree_item_get_labels_and_the_parent_keeps_its_own_row() {
+        // GitHub's file tree: an open folder's box covers its children.
+        let folder = (0, 0, 300, 90);
+        let (child, grandchild_folder, grandchild) = ((20, 30, 300, 60), (20, 60, 300, 90), (40, 60, 300, 90));
+        let got = targets(vec![item(folder), item(child), item(grandchild_folder), generic(grandchild)]);
+        assert_eq!(got, vec![(0, 0, 120, 30), (20, 30, 140, 60), (20, 60, 140, 90)]);
+    }
+
+    #[test]
+    fn a_wide_item_row_is_clicked_near_its_name_not_its_middle() {
+        // Explorer's details rows run past the visible columns: their middle can be off screen.
+        let row = (313, 241, 3000, 262);
+        assert_eq!(targets(vec![item(row)]), vec![(313, 241, 313 + 4 * 21, 262)]);
     }
 
     #[test]
