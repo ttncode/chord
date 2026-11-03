@@ -28,13 +28,13 @@ sequenceDiagram
 | 1 | Typing exactly a hint chord (`;`, `'`) opens labels; Caps repeat and Shift reopen them after a click | `src/win.rs:327`, `src/win.rs:357`, `src/config.rs:204` |
 | 2 | The panel is hidden synchronously before the scan | `src/win.rs:414`, `src/panel.rs:162` |
 | 3 | Up to 3 reads (0, 300, 600 ms) while Electron rebuilds its tree | `src/win.rs:198` |
-| 4 | Chromium page windows get a wake-up `WM_GETOBJECT` | `src/uia.rs:267` |
-| 5 | An open modal limits the scan: the focused one first, then one not covered at its centre | `src/uia.rs:144`, `src/uia.rs:293` |
+| 4 | Chromium page windows get a wake-up `WM_GETOBJECT` | `src/uia.rs:296` |
+| 5 | An open modal limits the scan: the focused one first, then one not covered at its centre | `src/uia.rs:144`, `src/uia.rs:322` |
 | 6 | Elements whose centre is covered by another app's window are dropped | `src/uia.rs:122` |
 | 7 | An empty read falls back to the page window (Electron after a minimize) | `src/uia.rs:179` |
-| 8 | Parts of real controls and generic boxes around other clickables lose their label; cap 300 after filtering | `src/hints.rs:21` |
-| 8b | `hints = "scroll"` reads scroll areas instead (scroll pattern, scrollable); nested ones all keep a label; none found falls back to the clickable read. A pick only moves the pointer | `src/uia.rs:219`, `src/hints.rs:43` |
-| 9 | Prefix-free labels from `sadfjklewcmpgh` | `src/hints.rs:58` |
+| 8 | Parts of real controls and generic boxes around other clickables lose their label; cap 300 after filtering | `src/hints.rs:27` |
+| 8b | `hints = "scroll"` reads scroll areas instead (scroll pattern, scrollable); only areas ≥ 80 px a side showing < 95 % of their content (Chromium calls 1 px of overflow scrollable); nested ones all keep a label; none found falls back to the clickable read. A pick only moves the pointer | `src/uia.rs:220`, `src/hints.rs:52` |
+| 9 | Prefix-free labels from `sadfjklewcmpgh` | `src/hints.rs:68` |
 | 10 | Labels drawn at each element's top-left on a click-through overlay | `src/panel.rs:574` |
 | 11 | Space up with a full label moves the pointer to the element centre and clicks | `src/win.rs:433`, `src/win.rs:254` |
 

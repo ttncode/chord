@@ -13,6 +13,12 @@ const MAX_LABELS: usize = 300;
 /// Element rectangles closer than this (pixels) on every edge are the same target.
 const SAME: i32 = 6;
 
+/// Smallest scroll area side worth a label, in pixels.
+const MIN_AREA: i32 = 80;
+
+/// Areas showing at least this percentage of their content barely scroll.
+const MAX_SHOWN: f64 = 95.0;
+
 /// The rectangles worth a label, top-left first. Each comes with whether it is a real control
 /// (button, link, list row…) rather than a generic clickable box. Containers (lists, panes) are
 /// already left out by type. Anything inside a real control is a part of it (a file row's cells, a
@@ -37,15 +43,19 @@ pub fn targets(elements: Vec<(Rect, bool)>) -> Vec<Rect> {
     kept
 }
 
-/// Scroll areas worth a label, top-left first. Unlike `targets`, nested ones all stay: a page and
-/// the panel scrolling inside it are both choices. Near-duplicates get one.
+/// Scroll areas worth a label, top-left first, from rectangles with the percentage of their content
+/// on view. Chromium calls anything that overflows by a pixel scrollable (a prompt box, a table, a
+/// clipped line), so only areas big enough to aim at and hiding a real part of their content count.
+/// Unlike `targets`, nested ones all stay: a page and the panel scrolling inside it are both choices.
+/// Near-duplicates get one.
 // shortcut: the pointer goes to an area's centre, so a page whose centre sits on an inner panel scrolls that panel; aim at an uncovered spot if it bites.
-pub fn areas(rects: Vec<Rect>) -> Vec<Rect> {
+pub fn areas(rects: Vec<(Rect, f64)>) -> Vec<Rect> {
     let same = |a: Rect, b: Rect| {
         (a.0 - b.0).abs() <= SAME && (a.1 - b.1).abs() <= SAME && (a.2 - b.2).abs() <= SAME && (a.3 - b.3).abs() <= SAME
     };
     let mut kept: Vec<Rect> = Vec::new();
-    for r in rects.into_iter().filter(|r| r.2 > r.0 && r.3 > r.1) {
+    let worth = |&(r, shown): &(Rect, f64)| r.2 - r.0 >= MIN_AREA && r.3 - r.1 >= MIN_AREA && shown < MAX_SHOWN;
+    for (r, _) in rects.into_iter().filter(worth) {
         if !kept.iter().any(|&k| same(k, r)) {
             kept.push(r);
         }
@@ -168,8 +178,16 @@ mod tests {
     fn scroll_areas_keep_nested_ones_and_drop_duplicates_and_empties() {
         let page = (0, 0, 800, 600);
         let panel = (500, 100, 780, 580);
-        let got = areas(vec![panel, page, (2, 1, 801, 600), (10, 10, 10, 50)]);
+        let got = areas(vec![(panel, 40.0), (page, 20.0), ((2, 1, 801, 600), 20.0), ((10, 10, 10, 50), 20.0)]);
         assert_eq!(got, vec![page, panel]);
+    }
+
+    #[test]
+    fn small_areas_and_areas_with_almost_nothing_hidden_get_no_label() {
+        let prompt_box = (700, 900, 1500, 960);
+        let table = (700, 800, 1500, 1000);
+        let chat = (340, 130, 1900, 990);
+        assert_eq!(areas(vec![(prompt_box, 50.0), (table, 98.0), (chat, 10.0)]), vec![chat]);
     }
 
     #[test]

@@ -9,7 +9,7 @@ use windows::Win32::UI::Accessibility::{
     UIA_IsExpandCollapsePatternAvailablePropertyId, UIA_IsInvokePatternAvailablePropertyId,
     UIA_IsKeyboardFocusablePropertyId, UIA_IsOffscreenPropertyId, UIA_IsSelectionItemPatternAvailablePropertyId,
     UIA_IsDialogPropertyId, UIA_IsTogglePatternAvailablePropertyId, UIA_IsScrollPatternAvailablePropertyId,
-    UIA_ScrollVerticallyScrollablePropertyId, UIA_ScrollHorizontallyScrollablePropertyId, UIA_PROPERTY_ID, UIA_CONTROLTYPE_ID,
+    UIA_ScrollVerticallyScrollablePropertyId, UIA_ScrollHorizontallyScrollablePropertyId, UIA_ScrollVerticalViewSizePropertyId, UIA_ScrollHorizontalViewSizePropertyId, UIA_PROPERTY_ID, UIA_CONTROLTYPE_ID,
     UIA_ButtonControlTypeId, UIA_SplitButtonControlTypeId, UIA_HyperlinkControlTypeId, UIA_MenuItemControlTypeId,
     UIA_TabItemControlTypeId, UIA_ListItemControlTypeId, UIA_TreeItemControlTypeId, UIA_DataItemControlTypeId,
     UIA_CheckBoxControlTypeId, UIA_RadioButtonControlTypeId, UIA_ComboBoxControlTypeId, UIA_EditControlTypeId,
@@ -216,7 +216,8 @@ pub fn clickable_rects(hwnd: HWND) -> Result<Vec<(Rect, bool)>> {
 
 /// Rectangles (physical screen pixels) of areas in `hwnd` that can scroll and that no other window
 /// covers at their centre. Apps that scroll on their own (Electron editors, chat lists) report none.
-pub fn scrollable_rects(hwnd: HWND) -> Result<Vec<Rect>> {
+/// Each comes with the smaller of its visible percentages (vertical, horizontal): 100 = nothing to scroll.
+pub fn scrollable_rects(hwnd: HWND) -> Result<Vec<(Rect, f64)>> {
     unsafe {
         let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
         let uia: IUIAutomation = CoCreateInstance(&CUIAutomation, None, CLSCTX_INPROC_SERVER)?;
@@ -226,6 +227,8 @@ pub fn scrollable_rects(hwnd: HWND) -> Result<Vec<Rect>> {
 
         let cache = uia.CreateCacheRequest()?;
         cache.AddProperty(UIA_BoundingRectanglePropertyId)?;
+        cache.AddProperty(UIA_ScrollVerticalViewSizePropertyId)?;
+        cache.AddProperty(UIA_ScrollHorizontalViewSizePropertyId)?;
         cache.SetAutomationElementMode(AutomationElementMode_None)?;
         let is = |id: UIA_PROPERTY_ID| uia.CreatePropertyCondition(id, &VARIANT::from(true));
         let not_offscreen = uia.CreatePropertyCondition(UIA_IsOffscreenPropertyId, &VARIANT::from(false))?;
@@ -238,13 +241,16 @@ pub fn scrollable_rects(hwnd: HWND) -> Result<Vec<Rect>> {
             &not_offscreen,
         )?;
         let app = crate::window::pid_of(hwnd);
-        let rects_in = |scope: &IUIAutomationElement| -> Result<Vec<Rect>> {
+        let rects_in = |scope: &IUIAutomationElement| -> Result<Vec<(Rect, f64)>> {
             let found = scope.FindAllBuildCache(TreeScope_Subtree, &condition, &cache)?;
             let mut rects = Vec::new();
             for i in 0..found.Length()? {
-                let Ok(rect) = found.GetElement(i).and_then(|e| e.CachedBoundingRectangle()) else { continue };
+                let Ok(element) = found.GetElement(i) else { continue };
+                let Ok(rect) = element.CachedBoundingRectangle() else { continue };
+                let view = |id| element.GetCachedPropertyValue(id).ok().and_then(|v| f64::try_from(&v).ok()).unwrap_or(100.0);
+                let shown = view(UIA_ScrollVerticalViewSizePropertyId).min(view(UIA_ScrollHorizontalViewSizePropertyId));
                 if center(rect).is_some_and(|c| crate::window::pid_of(WindowFromPoint(c)) == app) {
-                    rects.push((rect.left, rect.top, rect.right, rect.bottom));
+                    rects.push(((rect.left, rect.top, rect.right, rect.bottom), shown));
                 }
             }
             Ok(rects)
@@ -255,6 +261,29 @@ pub fn scrollable_rects(hwnd: HWND) -> Result<Vec<Rect>> {
                 if let Ok(page_root) = uia.ElementFromHandle(*page) {
                     result = rects_in(&page_root)?;
                 }
+            }
+        }
+        if DEBUG.load(Ordering::Relaxed) {
+            let mut log = format!("===== scroll areas kept: {result:?}\nEVERY ELEMENT WITH A SCROLL PATTERN:\n");
+            let any = root.FindAll(TreeScope_Subtree, &is(UIA_IsScrollPatternAvailablePropertyId)?)?;
+            for i in 0..any.Length()? {
+                let Ok(e) = any.GetElement(i) else { continue };
+                let r = e.CurrentBoundingRectangle().unwrap_or_default();
+                let flag = |id| e.GetCurrentPropertyValue(id).map(|v| v.to_string()).unwrap_or_default();
+                log += &format!(
+                    "type {:5}  {:?}  v={} h={} vview={} offscreen={}  {:?}\n",
+                    e.CurrentControlType().unwrap_or_default().0,
+                    (r.left, r.top, r.right, r.bottom),
+                    flag(UIA_ScrollVerticallyScrollablePropertyId),
+                    flag(UIA_ScrollHorizontallyScrollablePropertyId),
+                    flag(UIA_ScrollVerticalViewSizePropertyId),
+                    flag(UIA_IsOffscreenPropertyId),
+                    e.CurrentName().map(|n| n.to_string()).unwrap_or_default(),
+                );
+            }
+            use std::io::Write as _;
+            if let Ok(mut file) = std::fs::OpenOptions::new().append(true).create(true).open("hints-debug.txt") {
+                let _ = file.write_all(log.as_bytes());
             }
         }
         Ok(result)

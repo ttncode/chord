@@ -109,7 +109,7 @@ To click several things in a row, keep Space held: tap `Caps Lock` (or hold `Shi
 - Electron apps (Antigravity, Postman, Slack) build their accessibility tree only when first asked, so chord reads twice when the first read is empty.
 - When a modal dialog is open, only its contents get labels.
 
-If a button gets no label, run chord with `--debug-hints`, press `;` there, and read `hints-debug.txt` (in the folder chord runs from): it lists every element Windows reported, with its type, position and name.
+If a button gets no label, run chord with `--debug-hints`, press `;` there, and read `hints-debug.txt` (in the folder chord runs from): it lists every element Windows reported, with its type, position and name. For `/ms` it lists every element that reports scrolling, with how much of it is on view.
 
 ## Options
 
