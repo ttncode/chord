@@ -102,6 +102,7 @@ pub fn mouse(action: Mouse) {
         }
         Mouse::Back => send_mouse(&[MOUSEEVENTF_XDOWN, MOUSEEVENTF_XUP], XBUTTON1),
         Mouse::Forward => send_mouse(&[MOUSEEVENTF_XDOWN, MOUSEEVENTF_XUP], XBUTTON2),
+        Mouse::Point => {}
     }
 }
 

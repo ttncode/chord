@@ -37,6 +37,8 @@ pub enum Mouse {
     /// The mouse's side buttons.
     Back,
     Forward,
+    /// Only moves the pointer: what `hints = "scroll"` does with the picked area.
+    Point,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -357,7 +359,8 @@ fn parse_chord(key: &str, value: &toml::Value) -> Result<(Chord, Option<regex::R
                     "right-click" => Mouse::RightClick,
                     "double-click" => Mouse::DoubleClick,
                     "middle-click" => Mouse::MiddleClick,
-                    other => return Err(format!("hints \"{other}\" must be click, right-click, double-click or middle-click")),
+                    "scroll" => Mouse::Point,
+                    other => return Err(format!("hints \"{other}\" must be click, right-click, double-click, middle-click or scroll")),
                 };
                 actions.push(Action::Hints(Hint { click, taskbar: false }));
             }
@@ -667,6 +670,8 @@ mod tests {
         assert_eq!(f.chords[";"].action, Action::Hints(Hint { click: Mouse::Click, taskbar: false }));
         let f = global(r#""[" = { name = "New tab", hints = "middle-click" }"#);
         assert_eq!(f.chords["["].action, Action::Hints(Hint { click: Mouse::MiddleClick, taskbar: false }));
+        let f = global(r#""/ms" = { name = "Scroll area", hints = "scroll" }"#);
+        assert_eq!(f.chords["/ms"].action, Action::Hints(Hint { click: Mouse::Point, taskbar: false }));
     }
 
     #[test]

@@ -24,6 +24,6 @@ Commands: see [AGENTS.md](../../AGENTS.md#commands).
 | --- | --- |
 | Windows-only modules don't compile under `cargo test` on Linux; check them with `cargo check --target x86_64-pc-windows-gnu` | `src/main.rs` `#[cfg(windows)]` mods |
 | Never `println!`: use `say!`, which ignores a missing console | `src/main.rs` |
-| Never block in the hook callback | `src/win.rs:568` |
-| UI Automation runs on the main thread (COM MTA); GDI and windows on the GUI thread only | `src/uia.rs:54`, `src/panel.rs:99` |
+| Never block in the hook callback | `src/win.rs:579` |
+| UI Automation runs on the main thread (COM MTA); GDI and windows on the GUI thread only | `src/uia.rs:55`, `src/panel.rs:99` |
 | Starter chords must parse: a test loads every file in `chords/` | `src/config.rs` `starter_files_have_no_errors` |

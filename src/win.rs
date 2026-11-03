@@ -201,13 +201,24 @@ impl Hints {
         }
         // Electron apps (Postman, Antigravity) build their accessibility tree only once asked, and
         // drop it again after a while unused: a read can fail or come back empty while it rebuilds.
-        let mut result = uia::clickable_rects(hwnd).map(hints::targets);
+        let read = || {
+            if kind == Mouse::Point {
+                // Apps that scroll on their own report no scroll areas: label what's clickable instead,
+                // and the pane holding the picked element is the one the wheel scrolls.
+                let areas = uia::scrollable_rects(hwnd).map(hints::areas);
+                if matches!(&areas, Ok(rects) if !rects.is_empty()) {
+                    return areas;
+                }
+            }
+            uia::clickable_rects(hwnd).map(hints::targets)
+        };
+        let mut result = read();
         for wait in [300, 600] {
             if matches!(&result, Ok(rects) if !rects.is_empty()) {
                 break;
             }
             std::thread::sleep(Duration::from_millis(wait));
-            result = uia::clickable_rects(hwnd).map(hints::targets);
+            result = read();
         }
         let rects = match result {
             Ok(rects) if !rects.is_empty() => rects,

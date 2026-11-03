@@ -5,10 +5,11 @@ use windows::Win32::Foundation::{HWND, POINT, RECT};
 use windows::Win32::System::Com::{CLSCTX_INPROC_SERVER, COINIT_MULTITHREADED, CoCreateInstance, CoInitializeEx};
 use windows::Win32::UI::Accessibility::{
     AutomationElementMode_None, CUIAutomation, IUIAutomation, IUIAutomationCondition, IUIAutomationElement, TreeScope_Children,
-    TreeScope_Descendants, UIA_BoundingRectanglePropertyId, UIA_IsEnabledPropertyId,
+    TreeScope_Descendants, TreeScope_Subtree, UIA_BoundingRectanglePropertyId, UIA_IsEnabledPropertyId,
     UIA_IsExpandCollapsePatternAvailablePropertyId, UIA_IsInvokePatternAvailablePropertyId,
     UIA_IsKeyboardFocusablePropertyId, UIA_IsOffscreenPropertyId, UIA_IsSelectionItemPatternAvailablePropertyId,
-    UIA_IsDialogPropertyId, UIA_IsTogglePatternAvailablePropertyId, UIA_PROPERTY_ID, UIA_CONTROLTYPE_ID,
+    UIA_IsDialogPropertyId, UIA_IsTogglePatternAvailablePropertyId, UIA_IsScrollPatternAvailablePropertyId,
+    UIA_ScrollVerticallyScrollablePropertyId, UIA_ScrollHorizontallyScrollablePropertyId, UIA_PROPERTY_ID, UIA_CONTROLTYPE_ID,
     UIA_ButtonControlTypeId, UIA_SplitButtonControlTypeId, UIA_HyperlinkControlTypeId, UIA_MenuItemControlTypeId,
     UIA_TabItemControlTypeId, UIA_ListItemControlTypeId, UIA_TreeItemControlTypeId, UIA_DataItemControlTypeId,
     UIA_CheckBoxControlTypeId, UIA_RadioButtonControlTypeId, UIA_ComboBoxControlTypeId, UIA_EditControlTypeId,
@@ -208,6 +209,53 @@ pub fn clickable_rects(hwnd: HWND) -> Result<Vec<(Rect, bool)>> {
                 let _ = file.write_all(log.as_bytes());
             }
             say!("  (debug: wrote hints-debug.txt)");
+        }
+        Ok(result)
+    }
+}
+
+/// Rectangles (physical screen pixels) of areas in `hwnd` that can scroll and that no other window
+/// covers at their centre. Apps that scroll on their own (Electron editors, chat lists) report none.
+pub fn scrollable_rects(hwnd: HWND) -> Result<Vec<Rect>> {
+    unsafe {
+        let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
+        let uia: IUIAutomation = CoCreateInstance(&CUIAutomation, None, CLSCTX_INPROC_SERVER)?;
+        let child_windows = wake_chromium(hwnd);
+        let root = uia.ElementFromHandle(hwnd)?;
+        let _ = root.FindAll(TreeScope_Children, &uia.CreateTrueCondition()?);
+
+        let cache = uia.CreateCacheRequest()?;
+        cache.AddProperty(UIA_BoundingRectanglePropertyId)?;
+        cache.SetAutomationElementMode(AutomationElementMode_None)?;
+        let is = |id: UIA_PROPERTY_ID| uia.CreatePropertyCondition(id, &VARIANT::from(true));
+        let not_offscreen = uia.CreatePropertyCondition(UIA_IsOffscreenPropertyId, &VARIANT::from(false))?;
+        let scrolls = uia.CreateOrCondition(
+            &is(UIA_ScrollVerticallyScrollablePropertyId)?,
+            &is(UIA_ScrollHorizontallyScrollablePropertyId)?,
+        )?;
+        let condition = uia.CreateAndCondition(
+            &uia.CreateAndCondition(&is(UIA_IsScrollPatternAvailablePropertyId)?, &scrolls)?,
+            &not_offscreen,
+        )?;
+        let app = crate::window::pid_of(hwnd);
+        let rects_in = |scope: &IUIAutomationElement| -> Result<Vec<Rect>> {
+            let found = scope.FindAllBuildCache(TreeScope_Subtree, &condition, &cache)?;
+            let mut rects = Vec::new();
+            for i in 0..found.Length()? {
+                let Ok(rect) = found.GetElement(i).and_then(|e| e.CachedBoundingRectangle()) else { continue };
+                if center(rect).is_some_and(|c| crate::window::pid_of(WindowFromPoint(c)) == app) {
+                    rects.push((rect.left, rect.top, rect.right, rect.bottom));
+                }
+            }
+            Ok(rects)
+        };
+        let mut result = rects_in(&root)?;
+        for (page, class) in &child_windows {
+            if result.is_empty() && class == "Chrome_RenderWidgetHostHWND" {
+                if let Ok(page_root) = uia.ElementFromHandle(*page) {
+                    result = rects_in(&page_root)?;
+                }
+            }
         }
         Ok(result)
     }

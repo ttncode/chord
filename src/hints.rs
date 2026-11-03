@@ -37,6 +37,24 @@ pub fn targets(elements: Vec<(Rect, bool)>) -> Vec<Rect> {
     kept
 }
 
+/// Scroll areas worth a label, top-left first. Unlike `targets`, nested ones all stay: a page and
+/// the panel scrolling inside it are both choices. Near-duplicates get one.
+// shortcut: the pointer goes to an area's centre, so a page whose centre sits on an inner panel scrolls that panel; aim at an uncovered spot if it bites.
+pub fn areas(rects: Vec<Rect>) -> Vec<Rect> {
+    let same = |a: Rect, b: Rect| {
+        (a.0 - b.0).abs() <= SAME && (a.1 - b.1).abs() <= SAME && (a.2 - b.2).abs() <= SAME && (a.3 - b.3).abs() <= SAME
+    };
+    let mut kept: Vec<Rect> = Vec::new();
+    for r in rects.into_iter().filter(|r| r.2 > r.0 && r.3 > r.1) {
+        if !kept.iter().any(|&k| same(k, r)) {
+            kept.push(r);
+        }
+    }
+    kept.sort_by_key(|r| (r.1, r.0));
+    kept.truncate(MAX_LABELS);
+    kept
+}
+
 pub fn labels(count: usize) -> Vec<String> {
     if count == 0 {
         return vec![];
@@ -144,6 +162,14 @@ mod tests {
     #[test]
     fn empty_rectangles_are_dropped() {
         assert!(targets(vec![control((10, 10, 10, 30))]).is_empty());
+    }
+
+    #[test]
+    fn scroll_areas_keep_nested_ones_and_drop_duplicates_and_empties() {
+        let page = (0, 0, 800, 600);
+        let panel = (500, 100, 780, 580);
+        let got = areas(vec![panel, page, (2, 1, 801, 600), (10, 10, 10, 50)]);
+        assert_eq!(got, vec![page, panel]);
     }
 
     #[test]

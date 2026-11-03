@@ -83,6 +83,7 @@ name = "Global"
 "/mn" = { name = "Mouse: forward", mouse = "forward" }
 "/mt" = { name = "Go to top", shortcut = "ctrl+home" }
 "/mb" = { name = "Go to bottom", shortcut = "ctrl+end" }
+"/ms" = { name = "Mouse: pick scroll area (labels)", hints = "scroll" }
 
 # Scroll with nothing typed: hold j/k/h/l to keep scrolling (Vim directions). No chord may start with these letters.
 "j" = { name = "Scroll down (hold)", mouse = "scroll-down", repeat = true }
