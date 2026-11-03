@@ -2,6 +2,17 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/).
 
+## [0.4.0] - 2026-11-03
+
+### Added
+
+- Starter chord `]` double-clicks a label: opens a file in File Explorer, where `;` only selects it.
+
+### Fixed
+
+- Labels reach items inside an open folder of a tree (GitHub's file tree: a folder's files got none), and the open folder's own label clicks its row instead of the middle of everything under it.
+- A label on a list or tree row clicks near the row's name, not its middle: File Explorer's rows run past the visible columns, so the click missed.
+
 ## [0.3.9] - 2026-11-03
 
 ### Fixed
@@ -108,6 +119,7 @@ First release. Windows x64; tested on Windows 10 22H2.
 - Elements an app draws without telling UI Automation (custom-drawn apps, Postman's ☰ and window buttons) get no label.
 - `chord.exe` is not signed; Windows SmartScreen may warn on first run.
 
+[0.4.0]: https://github.com/ttncode/chord/releases/tag/v0.4.0
 [0.3.9]: https://github.com/ttncode/chord/releases/tag/v0.3.9
 [0.3.8]: https://github.com/ttncode/chord/releases/tag/v0.3.8
 [0.3.7]: https://github.com/ttncode/chord/releases/tag/v0.3.7
