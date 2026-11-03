@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/).
 
+## [0.4.1] - 2026-11-03
+
+### Changed
+
+- `--debug-hints` prints where a picked label clicks and what Windows reports under that point.
+
 ## [0.4.0] - 2026-11-03
 
 ### Added
@@ -119,6 +125,7 @@ First release. Windows x64; tested on Windows 10 22H2.
 - Elements an app draws without telling UI Automation (custom-drawn apps, Postman's ☰ and window buttons) get no label.
 - `chord.exe` is not signed; Windows SmartScreen may warn on first run.
 
+[0.4.1]: https://github.com/ttncode/chord/releases/tag/v0.4.1
 [0.4.0]: https://github.com/ttncode/chord/releases/tag/v0.4.0
 [0.3.9]: https://github.com/ttncode/chord/releases/tag/v0.3.9
 [0.3.8]: https://github.com/ttncode/chord/releases/tag/v0.3.8
