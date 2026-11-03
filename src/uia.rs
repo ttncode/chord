@@ -9,7 +9,8 @@ use windows::Win32::UI::Accessibility::{
     UIA_IsExpandCollapsePatternAvailablePropertyId, UIA_IsInvokePatternAvailablePropertyId,
     UIA_IsKeyboardFocusablePropertyId, UIA_IsOffscreenPropertyId, UIA_IsSelectionItemPatternAvailablePropertyId,
     UIA_IsDialogPropertyId, UIA_IsTogglePatternAvailablePropertyId, UIA_IsScrollPatternAvailablePropertyId,
-    UIA_ScrollVerticallyScrollablePropertyId, UIA_ScrollHorizontallyScrollablePropertyId, UIA_ScrollVerticalViewSizePropertyId, UIA_ScrollHorizontalViewSizePropertyId, UIA_PROPERTY_ID, UIA_CONTROLTYPE_ID,
+    UIA_ScrollVerticallyScrollablePropertyId, UIA_ScrollHorizontallyScrollablePropertyId, UIA_ScrollVerticalViewSizePropertyId, UIA_ScrollHorizontalViewSizePropertyId,
+    UIA_LandmarkTypePropertyId, UIA_NavigationLandmarkTypeId, UIA_PROPERTY_ID, UIA_CONTROLTYPE_ID,
     UIA_ButtonControlTypeId, UIA_SplitButtonControlTypeId, UIA_HyperlinkControlTypeId, UIA_MenuItemControlTypeId,
     UIA_TabItemControlTypeId, UIA_ListItemControlTypeId, UIA_TreeItemControlTypeId, UIA_DataItemControlTypeId,
     UIA_CheckBoxControlTypeId, UIA_RadioButtonControlTypeId, UIA_ComboBoxControlTypeId, UIA_EditControlTypeId,
@@ -215,8 +216,10 @@ pub fn clickable_rects(hwnd: HWND) -> Result<Vec<(Rect, bool)>> {
 }
 
 /// Rectangles (physical screen pixels) of areas in `hwnd` that can scroll and that no other window
-/// covers at their centre. Apps that scroll on their own (Electron editors, chat lists) report none.
-/// Each comes with the smaller of its visible percentages (vertical, horizontal): 100 = nothing to scroll.
+/// covers at their centre, plus navigation landmarks (web sidebars, whose scroll box Chromium can leave
+/// out of the tree; the wheel at their centre scrolls it anyway). Apps that scroll on their own
+/// (Electron editors, chat lists) report none. Each comes with the smaller of its visible percentages
+/// (vertical, horizontal): 100 = nothing to scroll; navigation landmarks count as 0.
 pub fn scrollable_rects(hwnd: HWND) -> Result<Vec<(Rect, f64)>> {
     unsafe {
         let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
@@ -229,6 +232,7 @@ pub fn scrollable_rects(hwnd: HWND) -> Result<Vec<(Rect, f64)>> {
         cache.AddProperty(UIA_BoundingRectanglePropertyId)?;
         cache.AddProperty(UIA_ScrollVerticalViewSizePropertyId)?;
         cache.AddProperty(UIA_ScrollHorizontalViewSizePropertyId)?;
+        cache.AddProperty(UIA_LandmarkTypePropertyId)?;
         cache.SetAutomationElementMode(AutomationElementMode_None)?;
         let is = |id: UIA_PROPERTY_ID| uia.CreatePropertyCondition(id, &VARIANT::from(true));
         let not_offscreen = uia.CreatePropertyCondition(UIA_IsOffscreenPropertyId, &VARIANT::from(false))?;
@@ -236,10 +240,12 @@ pub fn scrollable_rects(hwnd: HWND) -> Result<Vec<(Rect, f64)>> {
             &is(UIA_ScrollVerticallyScrollablePropertyId)?,
             &is(UIA_ScrollHorizontallyScrollablePropertyId)?,
         )?;
-        let condition = uia.CreateAndCondition(
+        let navigation = uia.CreatePropertyCondition(UIA_LandmarkTypePropertyId, &VARIANT::from(UIA_NavigationLandmarkTypeId.0))?;
+        let candidate = uia.CreateOrCondition(
             &uia.CreateAndCondition(&is(UIA_IsScrollPatternAvailablePropertyId)?, &scrolls)?,
-            &not_offscreen,
+            &navigation,
         )?;
+        let condition = uia.CreateAndCondition(&candidate, &not_offscreen)?;
         let app = crate::window::pid_of(hwnd);
         let rects_in = |scope: &IUIAutomationElement| -> Result<Vec<(Rect, f64)>> {
             let found = scope.FindAllBuildCache(TreeScope_Subtree, &condition, &cache)?;
@@ -248,7 +254,15 @@ pub fn scrollable_rects(hwnd: HWND) -> Result<Vec<(Rect, f64)>> {
                 let Ok(element) = found.GetElement(i) else { continue };
                 let Ok(rect) = element.CachedBoundingRectangle() else { continue };
                 let view = |id| element.GetCachedPropertyValue(id).ok().and_then(|v| f64::try_from(&v).ok()).unwrap_or(100.0);
-                let shown = view(UIA_ScrollVerticalViewSizePropertyId).min(view(UIA_ScrollHorizontalViewSizePropertyId));
+                let is_navigation = element
+                    .GetCachedPropertyValue(UIA_LandmarkTypePropertyId)
+                    .ok()
+                    .and_then(|v| i32::try_from(&v).ok())
+                    == Some(UIA_NavigationLandmarkTypeId.0);
+                let shown = match is_navigation {
+                    true => 0.0,
+                    false => view(UIA_ScrollVerticalViewSizePropertyId).min(view(UIA_ScrollHorizontalViewSizePropertyId)),
+                };
                 if center(rect).is_some_and(|c| crate::window::pid_of(WindowFromPoint(c)) == app) {
                     rects.push(((rect.left, rect.top, rect.right, rect.bottom), shown));
                 }
@@ -264,15 +278,17 @@ pub fn scrollable_rects(hwnd: HWND) -> Result<Vec<(Rect, f64)>> {
             }
         }
         if DEBUG.load(Ordering::Relaxed) {
-            let mut log = format!("===== scroll areas kept: {result:?}\nEVERY ELEMENT WITH A SCROLL PATTERN:\n");
-            let any = root.FindAll(TreeScope_Subtree, &is(UIA_IsScrollPatternAvailablePropertyId)?)?;
+            let mut log = format!("===== scroll areas kept: {result:?}\nEVERY ELEMENT WITH A SCROLL PATTERN OR A LANDMARK:\n");
+            let landmark = uia.CreateNotCondition(&uia.CreatePropertyCondition(UIA_LandmarkTypePropertyId, &VARIANT::from(0i32))?)?;
+            let any = root.FindAll(TreeScope_Subtree, &uia.CreateOrCondition(&is(UIA_IsScrollPatternAvailablePropertyId)?, &landmark)?)?;
             for i in 0..any.Length()? {
                 let Ok(e) = any.GetElement(i) else { continue };
                 let r = e.CurrentBoundingRectangle().unwrap_or_default();
                 let flag = |id| e.GetCurrentPropertyValue(id).map(|v| v.to_string()).unwrap_or_default();
                 log += &format!(
-                    "type {:5}  {:?}  v={} h={} vview={} offscreen={}  {:?}\n",
+                    "type {:5}  landmark {:5}  {:?}  v={} h={} vview={} offscreen={}  {:?}\n",
                     e.CurrentControlType().unwrap_or_default().0,
+                    flag(UIA_LandmarkTypePropertyId),
                     (r.left, r.top, r.right, r.bottom),
                     flag(UIA_ScrollVerticallyScrollablePropertyId),
                     flag(UIA_ScrollHorizontallyScrollablePropertyId),
