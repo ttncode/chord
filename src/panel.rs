@@ -59,6 +59,8 @@ pub struct View {
     pub rows: Vec<(String, String)>,
     /// Chord groups (`"/w"`, `"Window"`) whose prefix starts with what was typed, for the reminder line.
     pub groups: Vec<(String, String)>,
+    /// Row picked with Down/Up, counted in `rows`.
+    pub selected: Option<usize>,
 }
 
 static PANEL: AtomicIsize = AtomicIsize::new(0);
@@ -66,7 +68,7 @@ static OVERLAY: AtomicIsize = AtomicIsize::new(0);
 static TRAY_ICON: AtomicIsize = AtomicIsize::new(0);
 static HINTS: Mutex<(RECT, Vec<(POINT, String)>, String)> =
     Mutex::new((RECT { left: 0, top: 0, right: 0, bottom: 0 }, Vec::new(), String::new()));
-static VIEW: Mutex<View> = Mutex::new(View { app: String::new(), typed: String::new(), rows: Vec::new(), groups: Vec::new() });
+static VIEW: Mutex<View> = Mutex::new(View { app: String::new(), typed: String::new(), rows: Vec::new(), groups: Vec::new(), selected: None });
 static CHORDS_DIR: OnceLock<PathBuf> = OnceLock::new();
 /// Explorer broadcasts this after it restarts; tray icons must be added again.
 static TASKBAR_CREATED: AtomicU32 = AtomicU32::new(0);
@@ -496,7 +498,9 @@ fn render_panel() -> Option<(Canvas, POINT)> {
     let mut rows: Vec<(String, String)> = view.rows.clone();
     // The last line holds "N more" / "No chord …" on the left and the groups on the right.
     let keep = if !view.groups.is_empty() || rows.len() > room { room - 1 } else { room };
+    let first = crate::machine::first_shown(view.selected, keep);
     let more = rows.len().saturating_sub(keep);
+    rows.drain(..first.min(rows.len()));
     rows.truncate(keep);
     let footer = more > 0 || rows.is_empty() || !view.groups.is_empty();
     let lines = (rows.len() + usize::from(footer)) as i32;
@@ -534,8 +538,12 @@ fn render_panel() -> Option<(Canvas, POINT)> {
     let key_pad = s(8);
     let key_width = rows.iter().map(|(chord, _)| canvas.measure(chord, mono)).max().unwrap_or(0) + 2 * key_pad;
     let mut y = line + 1 + gap;
-    for (chord, name) in &rows {
+    for (shown, (chord, name)) in rows.iter().enumerate() {
         let cell = RECT { left: head.left, top: y, right: head.right, bottom: y + row };
+        if view.selected == Some(first + shown) {
+            let band = RECT { left: inner.left + s(6), right: inner.right - s(6), ..cell };
+            canvas.round_rect(band, s(style::KEYCAP_RADIUS), mix(colors.background, colors.accent, 0.25));
+        }
         let typed = common_prefix(chord, &view.typed);
         let chord_width = canvas.measure(chord, mono) + 2 * key_pad;
         let cap = RECT { left: cell.left, top: cell.top + s(4), right: cell.left + chord_width, bottom: cell.bottom - s(4) };

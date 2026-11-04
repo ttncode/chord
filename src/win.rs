@@ -46,7 +46,7 @@ use crate::{hints, uia};
 use crate::panel;
 use crate::window;
 use crate::keys::{Key, parse_shortcut};
-use crate::machine::{Effect, Machine, STORM_MAX, STORM_WINDOW_MS, Storm, VK_CAPITAL, VK_SPACE, repeat_candidate};
+use crate::machine::{Effect, Machine, STORM_MAX, STORM_WINDOW_MS, Storm, VK_CAPITAL, VK_SPACE, repeat_candidate, step};
 
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 const CAPS: [Key; 1] = [Key { vk: VK_CAPITAL, extended: false }];
@@ -137,6 +137,7 @@ impl Session {
             typed: buffer.to_string(),
             rows: matching.cloned().collect(),
             groups: groups.cloned().collect(),
+            selected: None,
         }
     }
 
@@ -297,6 +298,8 @@ pub fn run(chords_dir: PathBuf) {
     let mut held: Option<Held> = None;
     // (typed letters, chord) of the repeat chord run last, so releasing Space doesn't run it once more.
     let mut ran: Option<(String, String)> = None;
+    // Row of the chord list picked with Down/Up; releasing Space runs it instead of the typed letters.
+    let mut selected: Option<usize> = None;
     loop {
         let effect = match &mut held {
             Some(h) => match rx.recv_timeout(h.next.saturating_duration_since(Instant::now())) {
@@ -321,6 +324,7 @@ pub fn run(chords_dir: PathBuf) {
             Effect::KeyUp => {}
             Effect::Enter => {
                 ran = None;
+                selected = None;
                 buffer.clear();
                 end_hints(&mut hints);
                 let s = Session::start(&chords_dir);
@@ -329,6 +333,7 @@ pub fn run(chords_dir: PathBuf) {
                 show("");
             }
             Effect::Show(chord) => {
+                selected = None;
                 let typed_letter = chord.as_str().len() > buffer.len();
                 buffer = chord.as_str().to_string();
                 show(&buffer);
@@ -358,7 +363,18 @@ pub fn run(chords_dir: PathBuf) {
                     panel::show(s.view(&buffer));
                 }
             }
+            Effect::Move { down } => {
+                let Some(s) = &session else { continue };
+                if hints.is_some() {
+                    continue;
+                }
+                let mut view = s.view(&buffer);
+                selected = step(selected, view.rows.len(), down);
+                view.selected = selected;
+                panel::show(view);
+            }
             Effect::FireKeep(chord) => {
+                selected = None;
                 // A Caps tap ran (and cleared) the typed letters; Shift + letter keeps them.
                 if chord.as_str() == buffer {
                     buffer.clear();
@@ -384,6 +400,15 @@ pub fn run(chords_dir: PathBuf) {
                     }
                 }
                 show(&buffer);
+            }
+            Effect::Cancel | Effect::Fire(_) if selected.is_some() => {
+                panel::hide();
+                // shortcut: a picked label chord (`;`) or pattern chord does nothing here, as chord mode
+                // has ended; open its labels or ask for its input if anyone picks those from the list.
+                let picked = selected.take().zip(session.as_ref()).and_then(|(i, s)| s.view(&buffer).rows.into_iter().nth(i));
+                if let Some((chord, _)) = picked {
+                    fire(&chords_dir, &chord);
+                }
             }
             Effect::Cancel => {
                 panel::hide();
