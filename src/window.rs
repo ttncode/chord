@@ -137,14 +137,12 @@ pub fn move_pointer(x: i32, y: i32) {
         )
     };
     // Absolute moves count 0..=65535 across the whole virtual desktop.
-    let dx = (i64::from(x - left) * 65535 / i64::from(width - 1)) as i32;
-    let dy = (i64::from(y - top) * 65535 / i64::from(height - 1)) as i32;
-    let input = INPUT {
+    let input = |x: i32, y: i32| INPUT {
         r#type: INPUT_MOUSE,
         Anonymous: INPUT_0 {
             mi: MOUSEINPUT {
-                dx,
-                dy,
+                dx: (i64::from(x - left) * 65535 / i64::from(width - 1)) as i32,
+                dy: (i64::from(y - top) * 65535 / i64::from(height - 1)) as i32,
                 mouseData: 0,
                 dwFlags: MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_VIRTUALDESK,
                 time: 0,
@@ -152,7 +150,10 @@ pub fn move_pointer(x: i32, y: i32) {
             },
         },
     };
-    unsafe { SendInput(&[input], size_of::<INPUT>() as i32) };
+    // A move onto the spot SetCursorPos already set is no movement, and Windows ignores it: step 1 px
+    // aside first so the pointer is shown again.
+    let aside = if x > left { x - 1 } else { x + 1 };
+    unsafe { SendInput(&[input(aside, y), input(x, y)], size_of::<INPUT>() as i32) };
 }
 
 /// One SendInput call with these mouse events at the current pointer position.
