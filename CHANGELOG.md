@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/).
 
+## [0.4.4] - 2026-11-05
+
+### Fixed
+
+- Scroll chords (`j` `k` `h` `l`, `/mj`…) scroll the page even when the pointer rests on a header, a sidebar or another window: the pointer first moves onto the biggest scrolling area of the window in front.
+
 ## [0.4.3] - 2026-11-05
 
 ### Added
@@ -141,6 +147,7 @@ First release. Windows x64; tested on Windows 10 22H2.
 - Elements an app draws without telling UI Automation (custom-drawn apps, Postman's ☰ and window buttons) get no label.
 - `chord.exe` is not signed; Windows SmartScreen may warn on first run.
 
+[0.4.4]: https://github.com/ttncode/chord/releases/tag/v0.4.4
 [0.4.3]: https://github.com/ttncode/chord/releases/tag/v0.4.3
 [0.4.2]: https://github.com/ttncode/chord/releases/tag/v0.4.2
 [0.4.1]: https://github.com/ttncode/chord/releases/tag/v0.4.1
