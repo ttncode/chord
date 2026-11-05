@@ -34,7 +34,7 @@ sequenceDiagram
 | 7 | An empty read falls back to the page window (Electron after a minimize) | `src/uia.rs:187` |
 | 8 | Parts of real controls and generic boxes around other clickables lose their label, except items nested in an open tree/list item (which is cut to its own row); cap 300 after filtering | `src/hints.rs:40` |
 | 8b | `hints = "scroll"` reads scroll areas instead (scroll pattern, scrollable; plus navigation landmarks, as Chromium can leave a sidebar's scroll box out of the tree); only areas ≥ 80 px a side showing < 95 % of their content (Chromium calls 1 px of overflow scrollable); nested ones all keep a label; none found falls back to the clickable read. A pick only moves the pointer | `src/uia.rs:230`, `src/hints.rs:76` |
-| 9 | Prefix-free labels from `sadfjklewcmpgh` | `src/hints.rs:92` |
+| 9 | Prefix-free labels from `sadfjklewcmpgh` | `src/hints.rs:105` |
 | 10 | Labels drawn at each element's top-left on a click-through overlay | `src/panel.rs:586` |
 | 11 | Space up with a full label moves the pointer to the element centre and clicks | `src/win.rs:484`, `src/win.rs:261` |
 

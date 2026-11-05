@@ -35,7 +35,7 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{
     GetAsyncKeyState, KEYEVENTF_KEYUP, KEYEVENTF_UNICODE, SendInput, VIRTUAL_KEY,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-    CallNextHookEx, FindWindowW, GetForegroundWindow, GetWindowRect, SetCursorPos, GetMessageW, GetWindowTextW, GetWindowThreadProcessId,
+    CallNextHookEx, FindWindowW, GetCursorPos, GetForegroundWindow, GetWindowRect, SetCursorPos, GetMessageW, GetWindowTextW, GetWindowThreadProcessId,
     HC_ACTION, HHOOK, KBDLLHOOKSTRUCT, LLKHF_INJECTED, MSG, PostThreadMessageW, SetTimer, SetWindowsHookExW,
     UnhookWindowsHookEx, WH_KEYBOARD_LL, WM_APP, WM_KEYDOWN, WM_SYSKEYDOWN, WM_TIMER,
 };
@@ -549,10 +549,42 @@ fn run_action(action: &Action) {
                 }
             }
         }
-        Action::Mouse(action) => window::mouse(*action),
+        Action::Mouse(action) => {
+            if matches!(action, Mouse::ScrollUp | Mouse::ScrollDown | Mouse::ScrollLeft | Mouse::ScrollRight) {
+                aim_wheel();
+            }
+            window::mouse(*action)
+        }
         // Hint chords never get here: `run` handles them while typing.
         Action::Hints(_) => {}
     }
+}
+
+/// The wheel scrolls what is under the pointer, not what has focus: a pointer resting on a page header,
+/// a sidebar or another window scrolls nothing. Moves it onto the biggest scroll area of the window in
+/// front, unless it is already on one.
+fn aim_wheel() {
+    // (window, pointer) last checked: tapping `j` again doesn't scan again.
+    static CHECKED: std::sync::Mutex<Option<(isize, (i32, i32))>> = std::sync::Mutex::new(None);
+    let mut p = POINT::default();
+    let hwnd = unsafe {
+        let _ = GetCursorPos(&mut p);
+        GetForegroundWindow()
+    };
+    let mut checked = CHECKED.lock().unwrap_or_else(|e| e.into_inner());
+    if *checked == Some((hwnd.0 as isize, (p.x, p.y))) {
+        return;
+    }
+    // An empty read may be a browser still building its tree: check again next time.
+    let Ok(rects) = uia::scrollable_rects(hwnd) else { return };
+    if rects.is_empty() {
+        return;
+    }
+    let (x, y) = hints::aim(rects, (p.x, p.y)).unwrap_or((p.x, p.y));
+    unsafe {
+        let _ = SetCursorPos(x, y);
+    }
+    *checked = Some((hwnd.0 as isize, (x, y)));
 }
 
 fn run_shell(command: &str) {

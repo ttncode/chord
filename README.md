@@ -38,7 +38,7 @@ Inside chord mode:
 | `Esc` | Clear the letters |
 | `Caps Lock` | Run the typed chord and stay in chord mode; with nothing typed, run the last chord again (`/mj⇪⇪` scrolls down three times) |
 | `Shift` + letter | Run the typed letters plus this letter, keep the typed letters (`t` then `Shift`+`t`,`s`,`p` runs `tt`, `ts`, `tp`) |
-| `j` `k` `h` `l` (nothing typed) | Scroll down / up / left / right. Tap again to scroll again (`j j j k`), or hold to glide |
+| `j` `k` `h` `l` (nothing typed) | Scroll down / up / left / right. Tap again to scroll again (`j j j k`), or hold to glide. If the pointer isn't on a scrolling area of the window in front, it first moves to the biggest one |
 | Ctrl / Alt / Win + key | Passed to the app as a normal shortcut |
 | `Tab` | Search chords by name or keys when you forgot one. Let go of Caps Lock and Space and type words (`down` finds "Go to Downloads"). `Down` / `Up` pick, `Enter` runs, `Esc` closes. Label chords (`;`) only show their keys here. Search closes when another window comes in front or after 15 s without a key |
 

@@ -89,6 +89,19 @@ pub fn areas(rects: Vec<(Rect, f64)>) -> Vec<Rect> {
     kept
 }
 
+/// Where to put the pointer so the wheel scrolls something: None when it already rests on a scroll
+/// area, else the centre of the biggest one. `rects` as `uia::scrollable_rects` gives them; navigation
+/// landmarks (0) don't count, as they may not scroll at all.
+pub fn aim(rects: Vec<(Rect, f64)>, pointer: (i32, i32)) -> Option<(i32, i32)> {
+    let areas = areas(rects.into_iter().filter(|&(_, shown)| shown > 0.0).collect());
+    let inside = |r: &Rect| (r.0..r.2).contains(&pointer.0) && (r.1..r.3).contains(&pointer.1);
+    if areas.iter().any(inside) {
+        return None;
+    }
+    let r = areas.iter().max_by_key(|r| (r.2 - r.0) * (r.3 - r.1))?;
+    Some(((r.0 + r.2) / 2, (r.1 + r.3) / 2))
+}
+
 pub fn labels(count: usize) -> Vec<String> {
     if count == 0 {
         return vec![];
@@ -121,6 +134,15 @@ mod tests {
         (r, Kind::Item)
     }
 
+
+    #[test]
+    fn the_wheel_aims_at_the_biggest_scroll_area_unless_the_pointer_is_on_one() {
+        let rects = vec![((0, 0, 200, 900), 0.0), ((200, 100, 1000, 900), 40.0), ((1000, 100, 1300, 900), 60.0)];
+        assert_eq!(aim(rects.clone(), (1100, 500)), None);
+        assert_eq!(aim(rects.clone(), (500, 50)), Some((600, 500)));
+        assert_eq!(aim(rects.clone(), (100, 500)), Some((600, 500)));
+        assert_eq!(aim(vec![], (100, 500)), None);
+    }
     #[test]
     fn few_labels_are_single_letters() {
         assert_eq!(labels(3), vec!["a", "d", "s"]);
