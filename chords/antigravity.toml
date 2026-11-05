@@ -20,6 +20,7 @@ cp = { name = "Command palette", shortcut = "ctrl+shift+p" }
 fe = { name = "Focus Explorer", shortcut = "ctrl+shift+e" }
 ts = { name = "Toggle sidebar", shortcut = "ctrl+b" }
 ca = { name = "Collapse folders in Explorer", palette = "Collapse Folders in Explorer" }
+fr = { name = "Reveal current file in Explorer", palette = "File: Reveal Active File in Explorer View" }
 
 tt = { name = "Toggle terminal", shortcut = "ctrl+`" }
 fs = { name = "Search in files", shortcut = "ctrl+shift+f" }
