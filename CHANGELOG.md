@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/).
 
+## [0.4.7] - 2026-11-05
+
+### Fixed
+
+- The pointer could still stay hidden after chord moved it: the mouse move landed on the spot already set, and Windows ignores a move that goes nowhere. It now steps 1 px aside first.
+
 ## [0.4.6] - 2026-11-05
 
 ### Fixed
@@ -161,6 +167,7 @@ First release. Windows x64; tested on Windows 10 22H2.
 - Elements an app draws without telling UI Automation (custom-drawn apps, Postman's ☰ and window buttons) get no label.
 - `chord.exe` is not signed; Windows SmartScreen may warn on first run.
 
+[0.4.7]: https://github.com/ttncode/chord/releases/tag/v0.4.7
 [0.4.6]: https://github.com/ttncode/chord/releases/tag/v0.4.6
 [0.4.5]: https://github.com/ttncode/chord/releases/tag/v0.4.5
 [0.4.4]: https://github.com/ttncode/chord/releases/tag/v0.4.4
