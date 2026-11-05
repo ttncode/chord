@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/).
 
+## [0.4.5] - 2026-11-05
+
+### Added
+
+- Arrow keys in chord mode move the mouse pointer: a tap nudges it, holding glides it slowly at first, then up to full speed. Click there with `/mc`.
+- Antigravity starter chord `fr`: reveal the current file in the Explorer tree.
+
 ## [0.4.4] - 2026-11-05
 
 ### Fixed
@@ -147,6 +154,7 @@ First release. Windows x64; tested on Windows 10 22H2.
 - Elements an app draws without telling UI Automation (custom-drawn apps, Postman's ☰ and window buttons) get no label.
 - `chord.exe` is not signed; Windows SmartScreen may warn on first run.
 
+[0.4.5]: https://github.com/ttncode/chord/releases/tag/v0.4.5
 [0.4.4]: https://github.com/ttncode/chord/releases/tag/v0.4.4
 [0.4.3]: https://github.com/ttncode/chord/releases/tag/v0.4.3
 [0.4.2]: https://github.com/ttncode/chord/releases/tag/v0.4.2
