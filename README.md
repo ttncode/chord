@@ -36,7 +36,6 @@ Inside chord mode:
 |---|---|
 | `Backspace` / `Shift+Backspace` | Delete the last letter / all letters |
 | `Esc` | Clear the letters |
-| `Down` / `Up` | Highlight a chord in the list, scrolling past "N more"; releasing Space runs it. Typing, `Backspace` or `Esc` drops the highlight |
 | `Caps Lock` | Run the typed chord and stay in chord mode; with nothing typed, run the last chord again (`/mj⇪⇪` scrolls down three times) |
 | `Shift` + letter | Run the typed letters plus this letter, keep the typed letters (`t` then `Shift`+`t`,`s`,`p` runs `tt`, `ts`, `tp`) |
 | `j` `k` `h` `l` (nothing typed) | Scroll down / up / left / right. Tap again to scroll again (`j j j k`), or hold to glide |

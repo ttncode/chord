@@ -5,8 +5,6 @@ pub const VK_BACK: u16 = 0x08;
 pub const VK_CAPITAL: u16 = 0x14;
 pub const VK_ESCAPE: u16 = 0x1B;
 pub const VK_SPACE: u16 = 0x20;
-pub const VK_UP: u16 = 0x26;
-pub const VK_DOWN: u16 = 0x28;
 pub const VK_LWIN: u16 = 0x5B;
 pub const VK_RWIN: u16 = 0x5C;
 pub const VK_LCONTROL: u16 = 0xA2;
@@ -62,8 +60,6 @@ pub enum Effect {
     Quit,
     /// The newest letter typed in chord mode was let go: a held `repeat` chord stops.
     KeyUp,
-    /// Down or Up in chord mode: move the highlight in the chord list.
-    Move { down: bool },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -217,10 +213,6 @@ impl Machine {
         if !self.chord_mode || self.ctrl_alt_win_held() {
             return PASS;
         }
-        // Before the blocked check: auto-repeat keeps moving the highlight.
-        if vk == VK_DOWN || vk == VK_UP {
-            return self.block(i, Some(Effect::Move { down: vk == VK_DOWN }));
-        }
         if self.blocked[i] {
             return self.block(i, None);
         }
@@ -233,7 +225,6 @@ impl Machine {
                 self.buffer = Chord::new();
                 self.block(i, Some(Effect::Show(self.buffer)))
             }
-
             _ => match char_of(vk) {
                 Some(c) if self.shift_held() && self.buffer.len < CHORD_CAP => {
                     let mut fired = self.buffer;
@@ -307,25 +298,6 @@ fn is_modifier(vk: u16) -> bool {
 /// The chord to try after `buffer` grew by one letter. `ran` is (typed letters, chord) of the last
 /// `repeat` chord run: one more letter re-runs that chord with its last letter swapped for the new
 /// one, so `j j k` scrolls down, down, up instead of looking up `jj` and `jjk`.
-/// The highlighted row after Down (`down`) or Up in a list of `len` rows; it stops at either end.
-pub fn step(selected: Option<usize>, len: usize, down: bool) -> Option<usize> {
-    let last = len.checked_sub(1)?;
-    Some(match (selected, down) {
-        (None, true) => 0,
-        (None, false) => last,
-        (Some(i), true) => (i + 1).min(last),
-        (Some(i), false) => i.saturating_sub(1),
-    })
-}
-
-/// The first row to draw when `room` rows fit, so the highlighted one is on screen.
-pub fn first_shown(selected: Option<usize>, room: usize) -> usize {
-    match selected {
-        Some(i) if room > 0 && i >= room => i + 1 - room,
-        _ => 0,
-    }
-}
-
 pub fn repeat_candidate(ran: Option<(&str, &str)>, buffer: &str) -> String {
     if let Some((typed, chord)) = ran {
         if let Some(letter) = buffer.strip_prefix(typed).filter(|rest| rest.chars().count() == 1) {
@@ -441,40 +413,6 @@ mod tests {
         assert_eq!(press(&mut m, G), block_with(Effect::Show(chord("g"))));
         assert_eq!(release(&mut m, G), block_with(Effect::KeyUp));
         assert_eq!(press(&mut m, D), block_with(Effect::Show(chord("gd"))));
-    }
-
-    #[test]
-    fn arrows_in_chord_mode_move_the_highlight_and_stay_blocked() {
-        let mut m = in_chord_mode();
-        assert_eq!(press(&mut m, VK_DOWN), block_with(Effect::Move { down: true }));
-        assert_eq!(press(&mut m, VK_DOWN), block_with(Effect::Move { down: true }));
-        assert_eq!(release(&mut m, VK_DOWN), Decision { block: true, effect: None });
-        assert_eq!(press(&mut m, VK_UP), block_with(Effect::Move { down: false }));
-    }
-
-    #[test]
-    fn arrows_outside_chord_mode_pass() {
-        let mut m = Machine::new();
-        assert_eq!(press(&mut m, VK_DOWN), PASS);
-    }
-
-    #[test]
-    fn the_highlight_starts_at_either_end_and_stops_there() {
-        assert_eq!(step(None, 5, true), Some(0));
-        assert_eq!(step(None, 5, false), Some(4));
-        assert_eq!(step(Some(0), 5, true), Some(1));
-        assert_eq!(step(Some(4), 5, true), Some(4));
-        assert_eq!(step(Some(0), 5, false), Some(0));
-        assert_eq!(step(None, 0, true), None);
-    }
-
-    #[test]
-    fn the_list_scrolls_just_enough_to_show_the_highlight() {
-        assert_eq!(first_shown(None, 10), 0);
-        assert_eq!(first_shown(Some(9), 10), 0);
-        assert_eq!(first_shown(Some(10), 10), 1);
-        assert_eq!(first_shown(Some(25), 10), 16);
-        assert_eq!(first_shown(Some(3), 0), 0);
     }
 
     #[test]
