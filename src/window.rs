@@ -6,12 +6,13 @@ use windows::Win32::Foundation::{BOOL, HWND, LPARAM};
 use windows::Win32::Graphics::Dwm::{DWMWA_CLOAKED, DwmGetWindowAttribute};
 use windows::Win32::UI::Input::KeyboardAndMouse::{
     INPUT, INPUT_0, INPUT_MOUSE, MOUSE_EVENT_FLAGS, MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP,
-    MOUSEEVENTF_MIDDLEDOWN, MOUSEEVENTF_MIDDLEUP, MOUSEEVENTF_MOVE, MOUSEEVENTF_RIGHTDOWN,
+    MOUSEEVENTF_ABSOLUTE, MOUSEEVENTF_MIDDLEDOWN, MOUSEEVENTF_MIDDLEUP, MOUSEEVENTF_MOVE, MOUSEEVENTF_VIRTUALDESK, MOUSEEVENTF_RIGHTDOWN,
     MOUSEEVENTF_HWHEEL, MOUSEEVENTF_RIGHTUP, MOUSEEVENTF_WHEEL, MOUSEEVENTF_XDOWN, MOUSEEVENTF_XUP, MOUSEINPUT,
     SendInput,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-    EnumWindows, GW_OWNER, GetForegroundWindow, GetWindow, GetWindowTextLengthW, GetWindowThreadProcessId, IsIconic,
+    EnumWindows, GW_OWNER, GetForegroundWindow, GetSystemMetrics, SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN,
+    SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN, SetCursorPos, GetWindow, GetWindowTextLengthW, GetWindowThreadProcessId, IsIconic,
     IsWindowVisible, SW_RESTORE, SetForegroundWindow, ShowWindow,
 };
 
@@ -118,6 +119,40 @@ pub fn scroll(action: Mouse, amount: i32) -> bool {
     };
     send_mouse(&[flag], sign * amount);
     true
+}
+
+/// Puts the pointer at screen point (`x`, `y`). SetCursorPos alone isn't mouse input: a pointer hidden
+/// while typing stays hidden, and hover menus don't notice it. So a real move follows; SetCursorPos
+/// stays because SendInput lands later, and callers read the position back at once.
+pub fn move_pointer(x: i32, y: i32) {
+    unsafe {
+        let _ = SetCursorPos(x, y);
+    }
+    let (left, top, width, height) = unsafe {
+        (
+            GetSystemMetrics(SM_XVIRTUALSCREEN),
+            GetSystemMetrics(SM_YVIRTUALSCREEN),
+            GetSystemMetrics(SM_CXVIRTUALSCREEN).max(2),
+            GetSystemMetrics(SM_CYVIRTUALSCREEN).max(2),
+        )
+    };
+    // Absolute moves count 0..=65535 across the whole virtual desktop.
+    let dx = (i64::from(x - left) * 65535 / i64::from(width - 1)) as i32;
+    let dy = (i64::from(y - top) * 65535 / i64::from(height - 1)) as i32;
+    let input = INPUT {
+        r#type: INPUT_MOUSE,
+        Anonymous: INPUT_0 {
+            mi: MOUSEINPUT {
+                dx,
+                dy,
+                mouseData: 0,
+                dwFlags: MOUSEEVENTF_MOVE | MOUSEEVENTF_ABSOLUTE | MOUSEEVENTF_VIRTUALDESK,
+                time: 0,
+                dwExtraInfo: 0,
+            },
+        },
+    };
+    unsafe { SendInput(&[input], size_of::<INPUT>() as i32) };
 }
 
 /// One SendInput call with these mouse events at the current pointer position.

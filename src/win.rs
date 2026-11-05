@@ -35,7 +35,7 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{
     GetAsyncKeyState, KEYEVENTF_KEYUP, KEYEVENTF_UNICODE, SendInput, VIRTUAL_KEY,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
-    CallNextHookEx, FindWindowW, GetCursorPos, GetForegroundWindow, GetWindowRect, SetCursorPos, GetMessageW, GetWindowTextW, GetWindowThreadProcessId,
+    CallNextHookEx, FindWindowW, GetCursorPos, GetForegroundWindow, GetWindowRect, GetMessageW, GetWindowTextW, GetWindowThreadProcessId,
     HC_ACTION, HHOOK, KBDLLHOOKSTRUCT, LLKHF_INJECTED, MSG, PostThreadMessageW, SetTimer, SetWindowsHookExW,
     UnhookWindowsHookEx, WH_KEYBOARD_LL, WM_APP, WM_KEYDOWN, WM_SYSKEYDOWN, WM_TIMER,
 };
@@ -232,8 +232,8 @@ impl Glide {
         self.at.1 += self.direction.1 * distance;
         let (x, y) = (self.at.0.round() as i32, self.at.1.round() as i32);
         let mut p = POINT::default();
+        window::move_pointer(x, y);
         unsafe {
-            let _ = SetCursorPos(x, y);
             let _ = GetCursorPos(&mut p);
         }
         // Stopped at a screen edge (or the real mouse moved): carry on from where the pointer is.
@@ -315,9 +315,7 @@ impl Hints {
                 if uia::DEBUG.load(std::sync::atomic::Ordering::Relaxed) {
                     say!("  -> {label} at ({x}, {y}): {}", uia::describe_at(x, y));
                 }
-                unsafe {
-                    let _ = SetCursorPos(x, y);
-                }
+                window::move_pointer(x, y);
                 without_shift(|| window::mouse(self.kind));
             }
             None => say!("  -> no hint '{label}'"),
@@ -488,7 +486,11 @@ pub fn run(chords_dir: PathBuf) {
                     _ if direction == (0.0, 0.0) => glide = None,
                     // A second arrow turns the glide without losing its speed.
                     Some(g) => g.direction = direction,
-                    None => glide = Some(Glide::start(direction)),
+                    None => {
+                        // The list would cover the pointer it is moving.
+                        panel::hide_now();
+                        glide = Some(Glide::start(direction));
+                    }
                 }
             }
             Effect::Pick => {
@@ -652,9 +654,7 @@ fn aim_wheel() {
         return;
     }
     let (x, y) = hints::aim(rects, (p.x, p.y)).unwrap_or((p.x, p.y));
-    unsafe {
-        let _ = SetCursorPos(x, y);
-    }
+    window::move_pointer(x, y);
     *checked = Some((hwnd.0 as isize, (x, y)));
 }
 

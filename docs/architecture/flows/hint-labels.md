@@ -1,6 +1,6 @@
 # Flow: hint labels
 
-Entrypoint: `src/win.rs:536`
+Entrypoint: `src/win.rs:538`
 
 ```mermaid
 sequenceDiagram
@@ -25,8 +25,8 @@ sequenceDiagram
 
 | # | Step | Where |
 | - | ---- | ----- |
-| 1 | Typing exactly a hint chord (`;`, `'`) opens labels; Caps repeat and Shift reopen them after a click | `src/win.rs:413`, `src/win.rs:443`, `src/config.rs:216` |
-| 2 | The panel is hidden synchronously before the scan | `src/win.rs:536`, `src/panel.rs:166` |
+| 1 | Typing exactly a hint chord (`;`, `'`) opens labels; Caps repeat and Shift reopen them after a click | `src/win.rs:411`, `src/win.rs:441`, `src/config.rs:216` |
+| 2 | The panel is hidden synchronously before the scan | `src/win.rs:538`, `src/panel.rs:166` |
 | 3 | Up to 3 reads (0, 300, 600 ms) while Electron rebuilds its tree | `src/win.rs:255` |
 | 4 | Chromium page windows get a wake-up `WM_GETOBJECT` | `src/uia.rs:319` |
 | 5 | An open modal limits the scan: the focused one first, then one not covered at its centre | `src/uia.rs:152`, `src/uia.rs:361` |
@@ -36,13 +36,13 @@ sequenceDiagram
 | 8b | `hints = "scroll"` reads scroll areas instead (scroll pattern, scrollable; plus navigation landmarks, as Chromium can leave a sidebar's scroll box out of the tree); only areas ≥ 80 px a side showing < 95 % of their content (Chromium calls 1 px of overflow scrollable); nested ones all keep a label; none found falls back to the clickable read. A pick only moves the pointer | `src/uia.rs:230`, `src/hints.rs:76` |
 | 9 | Prefix-free labels from `sadfjklewcmpgh` | `src/hints.rs:105` |
 | 10 | Labels drawn at each element's top-left on a click-through overlay | `src/panel.rs:586` |
-| 11 | Space up with a full label moves the pointer to the element centre and clicks | `src/win.rs:555`, `src/win.rs:311` |
+| 11 | Space up with a full label moves the pointer to the element centre and clicks | `src/win.rs:557`, `src/win.rs:311` |
 
 ## Failure modes
 
 | When | Result | Handled at |
 | --- | --- | --- |
 | UI Automation errors (e.g. `0x80040201` in Chrome) | `could not read this window's buttons`, after 3 tries | `src/win.rs:255` |
-| Nothing clickable reported | `no clickable elements found`; Space up says `no labels on screen to pick from` | `src/win.rs:255`, `src/win.rs:511` |
+| Nothing clickable reported | `no clickable elements found`; Space up says `no labels on screen to pick from` | `src/win.rs:255`, `src/win.rs:513` |
 | Element exists only as pixels (custom-drawn, Postman's ☰ and window buttons) | no label; nothing to read | — |
 | A closed dialog lingers in the tree | ignored unless something in it is clickable | `src/uia.rs:152` |
