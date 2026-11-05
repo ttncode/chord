@@ -2,7 +2,7 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [0.4.3] - 2026-11-05
 
 ### Added
 
@@ -141,6 +141,7 @@ First release. Windows x64; tested on Windows 10 22H2.
 - Elements an app draws without telling UI Automation (custom-drawn apps, Postman's ☰ and window buttons) get no label.
 - `chord.exe` is not signed; Windows SmartScreen may warn on first run.
 
+[0.4.3]: https://github.com/ttncode/chord/releases/tag/v0.4.3
 [0.4.2]: https://github.com/ttncode/chord/releases/tag/v0.4.2
 [0.4.1]: https://github.com/ttncode/chord/releases/tag/v0.4.1
 [0.4.0]: https://github.com/ttncode/chord/releases/tag/v0.4.0
