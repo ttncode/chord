@@ -46,7 +46,7 @@ use crate::{hints, uia};
 use crate::panel;
 use crate::window;
 use crate::keys::{Key, parse_shortcut};
-use crate::machine::{Effect, Machine, STORM_MAX, STORM_WINDOW_MS, Storm, VK_CAPITAL, VK_SPACE, repeat_candidate, step};
+use crate::machine::{Effect, Machine, STORM_MAX, STORM_WINDOW_MS, Storm, VK_CAPITAL, VK_SPACE, repeat_candidate, step, glide_direction, glide_speed};
 
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 const CAPS: [Key; 1] = [Key { vk: VK_CAPITAL, extended: false }];
@@ -193,6 +193,56 @@ impl Held {
     }
 }
 
+/// The pointer gliding while arrows are held in chord mode.
+struct Glide {
+    direction: (f64, f64),
+    started: Instant,
+    last: Instant,
+    /// Kept in fractions: at low speed one tick moves less than a pixel.
+    at: (f64, f64),
+}
+
+const GLIDE_EVERY: Duration = Duration::from_millis(8);
+/// A tap moves this far at once, so short taps nudge the pointer by a few pixels.
+const GLIDE_NUDGE: f64 = 3.0;
+
+impl Glide {
+    fn start(direction: (f64, f64)) -> Self {
+        let mut p = POINT::default();
+        unsafe {
+            let _ = GetCursorPos(&mut p);
+        }
+        let now = Instant::now();
+        let mut glide = Self { direction, started: now, last: now, at: (f64::from(p.x), f64::from(p.y)) };
+        glide.step(GLIDE_NUDGE);
+        glide
+    }
+
+    fn tick(&mut self) {
+        let now = Instant::now();
+        // shortcut: speed is in physical pixels, so it feels faster on a low-DPI screen; scale by DPI if it bothers.
+        let speed = glide_speed(now.duration_since(self.started).as_millis() as u64);
+        let distance = speed * now.duration_since(self.last).as_secs_f64();
+        self.last = now;
+        self.step(distance);
+    }
+
+    fn step(&mut self, distance: f64) {
+        self.at.0 += self.direction.0 * distance;
+        self.at.1 += self.direction.1 * distance;
+        let (x, y) = (self.at.0.round() as i32, self.at.1.round() as i32);
+        let mut p = POINT::default();
+        unsafe {
+            let _ = SetCursorPos(x, y);
+            let _ = GetCursorPos(&mut p);
+        }
+        // Stopped at a screen edge (or the real mouse moved): carry on from where the pointer is.
+        if (p.x - x).abs() > 1 || (p.y - y).abs() > 1 {
+            self.at = (f64::from(p.x), f64::from(p.y));
+        }
+    }
+}
+
 /// Hint labels on screen: the letters typed after `key` pick a target.
 struct Hints {
     key: String,
@@ -306,9 +356,18 @@ pub fn run(chords_dir: PathBuf) {
     let mut ran: Option<(String, String)> = None;
     // Open search: its text, the highlighted row, and the window in front when it opened.
     let mut search: Option<(String, Option<usize>, HWND)> = None;
+    let mut glide: Option<Glide> = None;
     loop {
-        let effect = match &mut held {
-            Some(h) => match rx.recv_timeout(h.next.saturating_duration_since(Instant::now())) {
+        let effect = match (&mut held, &mut glide) {
+            (None, Some(g)) => match rx.recv_timeout(GLIDE_EVERY) {
+                Ok(effect) => effect,
+                Err(RecvTimeoutError::Timeout) => {
+                    g.tick();
+                    continue;
+                }
+                Err(RecvTimeoutError::Disconnected) => break,
+            },
+            (Some(h), _) => match rx.recv_timeout(h.next.saturating_duration_since(Instant::now())) {
                 Ok(effect) => effect,
                 Err(RecvTimeoutError::Timeout) => {
                     h.tick();
@@ -317,7 +376,7 @@ pub fn run(chords_dir: PathBuf) {
                 Err(RecvTimeoutError::Disconnected) => break,
             },
             // Duration::MAX makes recv_timeout wait like recv.
-            None => match rx.recv_timeout(if search.is_some() { Duration::from_millis(250) } else { Duration::MAX }) {
+            (None, None) => match rx.recv_timeout(if search.is_some() { Duration::from_millis(250) } else { Duration::MAX }) {
                 Ok(effect) => effect,
                 Err(RecvTimeoutError::Timeout) => {
                     // Search swallows the keyboard, so it closes once the user moves to another window.
@@ -332,6 +391,9 @@ pub fn run(chords_dir: PathBuf) {
             },
         };
         held = None;
+        if !matches!(effect, Effect::Glide(_)) {
+            glide = None;
+        }
         let ours = matches!(effect, Effect::ToggleCaps | Effect::ResyncCapsLight | Effect::Fire(_) | Effect::FireKeep(_));
         if ours && storm.hit(started.elapsed().as_millis() as u64) {
             stop_for_loop();
@@ -419,6 +481,15 @@ pub fn run(chords_dir: PathBuf) {
                 *selected = step(*selected, view.rows.len(), down);
                 view.selected = *selected;
                 panel::show(view);
+            }
+            Effect::Glide(arrows) => {
+                let direction = glide_direction(arrows);
+                match &mut glide {
+                    _ if direction == (0.0, 0.0) => glide = None,
+                    // A second arrow turns the glide without losing its speed.
+                    Some(g) => g.direction = direction,
+                    None => glide = Some(Glide::start(direction)),
+                }
             }
             Effect::Pick => {
                 panel::hide();

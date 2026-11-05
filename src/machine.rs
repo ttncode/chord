@@ -7,7 +7,9 @@ pub const VK_RETURN: u16 = 0x0D;
 pub const VK_CAPITAL: u16 = 0x14;
 pub const VK_ESCAPE: u16 = 0x1B;
 pub const VK_SPACE: u16 = 0x20;
+pub const VK_LEFT: u16 = 0x25;
 pub const VK_UP: u16 = 0x26;
+pub const VK_RIGHT: u16 = 0x27;
 pub const VK_DOWN: u16 = 0x28;
 pub const VK_LWIN: u16 = 0x5B;
 pub const VK_RWIN: u16 = 0x5C;
@@ -70,6 +72,8 @@ pub enum Effect {
     Move { down: bool },
     /// Enter in search: run the highlighted chord.
     Pick,
+    /// Arrows held in chord mode changed (`GLIDE_*` bits; 0 = none): the pointer glides that way.
+    Glide(u8),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -92,6 +96,8 @@ pub struct Machine {
     chord_mode: bool,
     /// Search swallows every key until Enter or Esc, even with Space and Caps let go; `buffer` holds its text.
     search: bool,
+    /// Arrows held in chord mode, as `GLIDE_*` bits.
+    arrows: u8,
     buffer: Chord,
     /// Last chord run with Caps or Shift, repeated by a Caps tap on an empty buffer.
     last: Chord,
@@ -120,6 +126,7 @@ impl Machine {
             space_held: false,
             chord_mode: false,
             search: false,
+            arrows: 0,
             buffer: Chord::new(),
             last: Chord::new(),
             last_space_ms: 0,
@@ -235,6 +242,12 @@ impl Machine {
         if !self.chord_mode || self.ctrl_alt_win_held() {
             return PASS;
         }
+        if let Some(bit) = arrow_bit(vk) {
+            // Auto-repeat changes nothing: the glide runs until the arrow is let go.
+            let effect = (self.arrows & bit == 0).then_some(Effect::Glide(self.arrows | bit));
+            self.arrows |= bit;
+            return self.block(i, effect);
+        }
         if self.blocked[i] {
             return self.block(i, None);
         }
@@ -249,6 +262,7 @@ impl Machine {
             }
             VK_TAB => {
                 self.chord_mode = false;
+                self.arrows = 0;
                 self.search = true;
                 self.buffer = Chord::new();
                 self.block(i, Some(Effect::Search(self.buffer)))
@@ -274,10 +288,16 @@ impl Machine {
     }
 
     fn release(&mut self, vk: u16, i: usize) -> Decision {
+        if let Some(bit) = arrow_bit(vk).filter(|&bit| self.arrows & bit != 0) {
+            self.arrows &= !bit;
+            self.blocked[i] = false;
+            return Decision { block: true, effect: Some(Effect::Glide(self.arrows)) };
+        }
         if vk == VK_SPACE {
             self.space_held = false;
             if self.chord_mode {
                 self.chord_mode = false;
+                self.arrows = 0;
                 self.blocked[i] = false;
                 let effect = if self.buffer.len == 0 { Effect::Cancel } else { Effect::Fire(self.buffer) };
                 return Decision { block: true, effect: Some(effect) };
@@ -350,6 +370,39 @@ impl Machine {
             .iter()
             .any(|&vk| self.modifiers[vk as usize])
     }
+}
+
+pub const GLIDE_LEFT: u8 = 1;
+pub const GLIDE_RIGHT: u8 = 2;
+pub const GLIDE_UP: u8 = 4;
+pub const GLIDE_DOWN: u8 = 8;
+
+fn arrow_bit(vk: u16) -> Option<u8> {
+    match vk {
+        VK_LEFT => Some(GLIDE_LEFT),
+        VK_RIGHT => Some(GLIDE_RIGHT),
+        VK_UP => Some(GLIDE_UP),
+        VK_DOWN => Some(GLIDE_DOWN),
+        _ => None,
+    }
+}
+
+/// Unit direction (x right, y down) of the held `GLIDE_*` arrows; opposite arrows cancel out.
+pub fn glide_direction(arrows: u8) -> (f64, f64) {
+    let axis = |minus: u8, plus: u8| f64::from(arrows & plus != 0) - f64::from(arrows & minus != 0);
+    let (x, y) = (axis(GLIDE_LEFT, GLIDE_RIGHT), axis(GLIDE_UP, GLIDE_DOWN));
+    let length = (x * x + y * y).sqrt();
+    if length == 0.0 { (0.0, 0.0) } else { (x / length, y / length) }
+}
+
+/// Pixels per second after holding arrows for `held_ms`: slow at first for precise aim, then a
+/// quadratic ramp to full speed for crossing the screen (QMK's kinetic mouse keys).
+pub fn glide_speed(held_ms: u64) -> f64 {
+    const START: f64 = 120.0;
+    const MAX: f64 = 2400.0;
+    const RAMP_MS: f64 = 1200.0;
+    let t = (held_ms as f64 / RAMP_MS).min(1.0);
+    START + (MAX - START) * t * t
 }
 
 fn is_modifier(vk: u16) -> bool {
@@ -516,6 +569,29 @@ mod tests {
         m.key_at(VK_TAB, true, 1_200);
         assert_eq!(m.key_at(G, true, 1_300), block_with(Effect::Search(chord("g"))));
         assert_eq!(m.key_at(G, true, 1_300 + IDLE_MS + 1), Decision { block: false, effect: Some(Effect::Cancel) });
+    }
+
+    #[test]
+    fn arrows_in_chord_mode_glide_until_let_go_and_space_release_stops_them() {
+        let mut m = in_chord_mode();
+        assert_eq!(press(&mut m, VK_RIGHT), block_with(Effect::Glide(GLIDE_RIGHT)));
+        assert_eq!(press(&mut m, VK_RIGHT), block());
+        assert_eq!(press(&mut m, VK_DOWN), block_with(Effect::Glide(GLIDE_RIGHT | GLIDE_DOWN)));
+        assert_eq!(release(&mut m, VK_RIGHT), block_with(Effect::Glide(GLIDE_DOWN)));
+        assert_eq!(release(&mut m, VK_SPACE), block_with(Effect::Cancel));
+        assert_eq!(release(&mut m, VK_DOWN), block());
+        assert_eq!(press(&mut m, VK_DOWN), pass());
+    }
+
+    #[test]
+    fn glide_goes_diagonal_at_the_same_speed_and_ramps_up() {
+        assert_eq!(glide_direction(GLIDE_RIGHT), (1.0, 0.0));
+        assert_eq!(glide_direction(GLIDE_LEFT | GLIDE_RIGHT), (0.0, 0.0));
+        let (x, y) = glide_direction(GLIDE_UP | GLIDE_LEFT);
+        assert!((x + 0.7071).abs() < 1e-3 && (y + 0.7071).abs() < 1e-3);
+        assert_eq!(glide_speed(0), 120.0);
+        assert!(glide_speed(300) < glide_speed(900));
+        assert_eq!(glide_speed(5_000), 2400.0);
     }
 
     #[test]

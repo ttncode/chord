@@ -39,6 +39,7 @@ Inside chord mode:
 | `Caps Lock` | Run the typed chord and stay in chord mode; with nothing typed, run the last chord again (`/mj⇪⇪` scrolls down three times) |
 | `Shift` + letter | Run the typed letters plus this letter, keep the typed letters (`t` then `Shift`+`t`,`s`,`p` runs `tt`, `ts`, `tp`) |
 | `j` `k` `h` `l` (nothing typed) | Scroll down / up / left / right. Tap again to scroll again (`j j j k`), or hold to glide. If the pointer isn't on a scrolling area of the window in front, it first moves to the biggest one |
+| Arrow keys | Move the mouse pointer: a tap nudges it, holding glides it slowly, then faster. Two arrows go diagonal. Then click with `/mc`, `/mr`, `/md` |
 | Ctrl / Alt / Win + key | Passed to the app as a normal shortcut |
 | `Tab` | Search chords by name or keys when you forgot one. Let go of Caps Lock and Space and type words (`down` finds "Go to Downloads"). `Down` / `Up` pick, `Enter` runs, `Esc` closes. Label chords (`;`) only show their keys here. Search closes when another window comes in front or after 15 s without a key |
 
@@ -202,6 +203,7 @@ Vietnamese Telex (switch to it with `Win + Space`):
 Normal typing:
 - [ ] Holding Space alone types spaces as usual.
 - [ ] `Ctrl + Space + Esc` always quits.
+- [ ] Caps Lock + Space, hold `Right`: the pointer glides right and speeds up; let go and it stops; type `/mc`, release Space: it clicks there.
 - [ ] Caps Lock + Space + `Tab`, release both, type `down`: the list shows matching chords; `Enter` runs the highlighted one, `Esc` closes, typing goes back to the app.
 
 </details>
