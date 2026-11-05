@@ -12,7 +12,7 @@ Keyboard chords for Windows: hold Caps Lock + Space, type letters, release Space
 
 | Task | Command | Evidence |
 | --- | --- | --- |
-| Test (all) | `cargo test` | executed: 122 tests pass |
+| Test (all) | `cargo test` | executed: 123 tests pass |
 | Test (single) | `cargo test <name>`, e.g. `cargo test hint_prefix` | executed |
 | Check the Windows build from Linux/WSL | `cargo check --target x86_64-pc-windows-gnu` | executed |
 | Run | `cargo run --release` | executed on Windows by the maintainer |

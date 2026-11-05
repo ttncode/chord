@@ -589,6 +589,16 @@ fn common_prefix(a: &str, b: &str) -> usize {
 }
 
 /// Small accent-blue tags with white letters (the already-typed letters dimmed) at each target's corner.
+/// The size each label in `labels` is drawn at over `area`, as `render_hints` draws it.
+pub fn hint_sizes(area: RECT, labels: &[String]) -> Vec<(i32, i32)> {
+    let s = scale(unsafe { MonitorFromRect(&area, MONITOR_DEFAULTTONEAREST) });
+    let Some(canvas) = Canvas::new(1, 1) else { return vec![(0, 0); labels.len()] };
+    let mut fonts = Fonts(Vec::new());
+    let font = fonts.make(style::UI_FONTS, s(11), 700);
+    let (height, side) = (s(style::HINT_HEIGHT), s(style::HINT_PADDING));
+    labels.iter().map(|l| (canvas.measure(&l.to_uppercase(), font) + 2 * side, height)).collect()
+}
+
 fn render_hints() -> Option<(Canvas, POINT)> {
     let (area, labels, typed) = HINTS.lock().unwrap_or_else(|e| e.into_inner()).clone();
     let s = scale(unsafe { MonitorFromRect(&area, MONITOR_DEFAULTTONEAREST) });

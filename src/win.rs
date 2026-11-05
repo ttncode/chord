@@ -292,7 +292,16 @@ impl Hints {
         unsafe {
             let _ = GetWindowRect(hwnd, &mut area);
         }
-        let labels = hints::labels(rects.len());
+        // Labels change after a drop, and so do their widths: check again until nothing drops.
+        let mut rects = rects;
+        let labels = loop {
+            let labels = hints::labels(rects.len());
+            let kept = hints::unstack(rects.clone(), &panel::hint_sizes(area, &labels));
+            if kept.len() == rects.len() {
+                break labels;
+            }
+            rects = kept;
+        };
         let targets = rects.into_iter().zip(labels).collect::<Vec<_>>();
         Some(Self { key: key.to_string(), kind, area, targets })
     }

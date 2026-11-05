@@ -75,6 +75,22 @@ pub fn targets(elements: Vec<(Rect, Kind)>) -> Vec<Rect> {
     kept
 }
 
+/// `rects` (in label order) without those whose label, of the size in `sizes`, would cover an
+/// earlier kept one's while the two elements overlap too: parts of one thing reported twice.
+/// Labels that touch on neighbouring buttons stay.
+pub fn unstack(rects: Vec<Rect>, sizes: &[(i32, i32)]) -> Vec<Rect> {
+    let cross = |a: Rect, b: Rect| a.0 < b.2 && b.0 < a.2 && a.1 < b.3 && b.1 < a.3;
+    let pill = |r: Rect, (w, h): (i32, i32)| (r.0, r.1, r.0 + w, r.1 + h);
+    let mut kept: Vec<(Rect, Rect)> = Vec::new();
+    for (&r, &size) in rects.iter().zip(sizes) {
+        let label = pill(r, size);
+        if !kept.iter().any(|&(k, k_label)| cross(k, r) && cross(k_label, label)) {
+            kept.push((r, label));
+        }
+    }
+    kept.into_iter().map(|(r, _)| r).collect()
+}
+
 /// Half or more of the smaller one lies inside the other: an icon spilling out of its button, a badge
 /// on an avatar. Their labels would sit on top of each other, and clicking either hits the same thing.
 fn mostly_overlap(a: Rect, b: Rect) -> bool {
@@ -232,6 +248,16 @@ mod tests {
         // Rows that only touch keep both.
         let (a, b) = ((0, 0, 300, 20), (0, 20, 300, 40));
         assert_eq!(targets(vec![control(a), control(b)]), vec![a, b]);
+    }
+
+    #[test]
+    fn a_label_that_would_cover_another_on_the_same_thing_is_dropped() {
+        // Excel's title bar: the maximize button and a part of it 17 px off its corner.
+        let (maximize, part) = ((1770, 5, 1816, 35), (1787, 10, 1810, 30));
+        assert_eq!(unstack(vec![maximize, part], &[(22, 15), (22, 15)]), vec![maximize]);
+        // Bold and Italic sit 20 px apart: the labels touch, but they're different buttons.
+        let (bold, italic) = ((160, 100, 180, 120), (180, 100, 200, 120));
+        assert_eq!(unstack(vec![bold, italic], &[(22, 15), (22, 15)]), vec![bold, italic]);
     }
 
     #[test]
