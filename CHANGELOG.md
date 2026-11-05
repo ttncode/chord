@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/).
 
+## [0.4.6] - 2026-11-05
+
+### Fixed
+
+- Arrow glide hides the chord list, so it no longer covers the pointer.
+- The pointer no longer stays invisible after chord moves it (arrow glide, label clicks, scroll aiming): the move is sent as real mouse input, which also triggers hover effects.
+
 ## [0.4.5] - 2026-11-05
 
 ### Added
@@ -154,6 +161,7 @@ First release. Windows x64; tested on Windows 10 22H2.
 - Elements an app draws without telling UI Automation (custom-drawn apps, Postman's ☰ and window buttons) get no label.
 - `chord.exe` is not signed; Windows SmartScreen may warn on first run.
 
+[0.4.6]: https://github.com/ttncode/chord/releases/tag/v0.4.6
 [0.4.5]: https://github.com/ttncode/chord/releases/tag/v0.4.5
 [0.4.4]: https://github.com/ttncode/chord/releases/tag/v0.4.4
 [0.4.3]: https://github.com/ttncode/chord/releases/tag/v0.4.3
