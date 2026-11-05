@@ -24,6 +24,8 @@ name = "Global"
 "/o" = { name = "Outlook", focus = "outlook.exe", launch = "start outlook" }
 "/g" = { name = "Everything (find files)", focus = "everything.exe", launch = 'start "" "%ProgramFiles(x86)%\Everything\Everything.exe"' }
 "/=" = { name = "Notepad++", focus = "notepad++.exe", launch = "start notepad++" }
+"/x" = { name = "Excel", focus = "excel.exe", launch = "start excel" }
+"/w" = { name = "Word", focus = "winword.exe", launch = "start winword" }
 "/e" = { name = "File Explorer (new window)", shortcut = "win+e" }
 
 # Window layout: these send the Win+Alt hotkeys of window.ahk (AutoHotkey must be running)
