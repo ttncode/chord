@@ -26,29 +26,36 @@ const MAX_SHOWN: f64 = 95.0;
 pub enum Kind {
     /// Clickable, but no known control type (custom, text, image).
     Generic,
-    /// Button, link, file row…
+    /// Link, file row, tab…
     Control,
+    /// A button: one inside another control (a tab's close button) still gets a label.
+    Button,
+    /// A scroll bar: neither it nor its arrows get a label, as the scroll chords do its job.
+    ScrollBar,
     /// Tree or list item: an open one's box also covers the items nested in it.
     Item,
 }
 
 /// The rectangles worth a label, top-left first. Containers (lists, panes) are already left out by
 /// type. Anything inside a real control is a part of it (a file row's cells, a button's text) and
-/// gets no label, except items nested in an open item (a folder's files), which keep theirs while
+/// gets no label, except buttons (a tab's close button) and items nested in an open item (a folder's files), which keep theirs while
 /// the open item is cut down to its own row above them. A generic box holding other clickable
 /// things gives way to them (Vimium's rule for web pages). Near-duplicates and mostly overlapping
-/// ones get one.
+/// ones get one. Scroll bars and their parts get none.
 pub fn targets(elements: Vec<(Rect, Kind)>) -> Vec<Rect> {
     let same = |a: Rect, b: Rect| {
         (a.0 - b.0).abs() <= SAME && (a.1 - b.1).abs() <= SAME && (a.2 - b.2).abs() <= SAME && (a.3 - b.3).abs() <= SAME
     };
     let contains = |a: Rect, b: Rect| a.0 <= b.0 && a.1 <= b.1 && a.2 >= b.2 && a.3 >= b.3 && !same(a, b);
     let elements: Vec<(Rect, Kind)> = elements.into_iter().filter(|(r, _)| r.2 > r.0 && r.3 > r.1).collect();
+    let in_scroll_bar = |r: Rect| elements.iter().any(|&(bar, k)| k == Kind::ScrollBar && (same(bar, r) || contains(bar, r)));
+    let elements: Vec<(Rect, Kind)> = elements.iter().copied().filter(|&(r, _)| !in_scroll_bar(r)).collect();
     let mut kept: Vec<Rect> = Vec::new();
     for &(mut r, kind) in &elements {
-        let part_of_a_control = elements
-            .iter()
-            .any(|&(outer, k)| k != Kind::Generic && !(k == Kind::Item && kind == Kind::Item) && contains(outer, r));
+        let part_of_a_control = kind != Kind::Button
+            && elements
+                .iter()
+                .any(|&(outer, k)| k != Kind::Generic && !(k == Kind::Item && kind == Kind::Item) && contains(outer, r));
         let box_around_others = kind == Kind::Generic && elements.iter().any(|&(inner, _)| contains(r, inner));
         if kind == Kind::Item {
             let nested_top = elements.iter().filter(|&&(inner, k)| k == Kind::Item && contains(r, inner) && inner.1 > r.1).map(|(inner, _)| inner.1).min();
@@ -59,7 +66,7 @@ pub fn targets(elements: Vec<(Rect, Kind)>) -> Vec<Rect> {
             // columns (Explorer's details view) or far beyond its text.
             r.2 = r.2.min(r.0 + ITEM_WIDTH_PER_HEIGHT * (r.3 - r.1));
         }
-        if !part_of_a_control && !box_around_others && !kept.iter().any(|&k| same(k, r) || mostly_overlap(k, r)) {
+        if !part_of_a_control && !box_around_others && !kept.iter().any(|&k| same(k, r) || (mostly_overlap(k, r) && !contains(k, r) && !contains(r, k))) {
             kept.push(r);
         }
     }
@@ -141,6 +148,29 @@ mod tests {
     }
     fn item(r: Rect) -> (Rect, Kind) {
         (r, Kind::Item)
+    }
+    fn button(r: Rect) -> (Rect, Kind) {
+        (r, Kind::Button)
+    }
+    fn scroll_bar(r: Rect) -> (Rect, Kind) {
+        (r, Kind::ScrollBar)
+    }
+
+    #[test]
+    fn a_button_inside_a_tab_or_row_keeps_its_own_label() {
+        // Windows Terminal: each tab holds its close button.
+        let (tab, close) = ((649, 9, 889, 41), (852, 13, 884, 37));
+        assert_eq!(targets(vec![control(tab), button(close)]), vec![tab, close]);
+    }
+
+    #[test]
+    fn scroll_bars_and_their_parts_get_no_label_and_do_not_hide_the_pane() {
+        // Windows Terminal: the text area holds the scroll bar's arrows and track.
+        let pane = (641, 41, 1919, 1039);
+        let bar = (1903, 41, 1919, 1039);
+        let (up, track, down) = ((1903, 41, 1919, 57), (1903, 57, 1919, 1023), (1903, 1023, 1919, 1039));
+        let got = targets(vec![generic(pane), scroll_bar(bar), button(up), button(track), button(down)]);
+        assert_eq!(got, vec![pane]);
     }
 
 

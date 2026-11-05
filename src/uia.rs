@@ -105,8 +105,10 @@ pub fn clickable_rects(hwnd: HWND) -> Result<Vec<(Rect, Kind)>> {
             let of_kind = uia.CreatePropertyCondition(UIA_ControlTypePropertyId, &VARIANT::from(kind.0))?;
             container = uia.CreateOrCondition(&container, &of_kind)?;
         }
-        let condition =
-            uia.CreateAndCondition(&uia.CreateAndCondition(&visible, &clickable)?, &uia.CreateNotCondition(&container)?)?;
+        // Scroll bars come along so their arrows and track, which are buttons, can be left out.
+        let scroll_bar = uia.CreatePropertyCondition(UIA_ControlTypePropertyId, &VARIANT::from(UIA_ScrollBarControlTypeId.0))?;
+        let target = uia.CreateAndCondition(&clickable, &uia.CreateNotCondition(&container)?)?;
+        let condition = uia.CreateAndCondition(&visible, &uia.CreateOrCondition(&target, &scroll_bar)?)?;
 
         let app = crate::window::pid_of(hwnd);
         let debug = DEBUG.load(Ordering::Relaxed);
@@ -129,6 +131,10 @@ pub fn clickable_rects(hwnd: HWND) -> Result<Vec<(Rect, Kind)>> {
                 if shown {
                     let kind = if kind == UIA_TreeItemControlTypeId || kind == UIA_ListItemControlTypeId {
                         Kind::Item
+                    } else if kind == UIA_ButtonControlTypeId || kind == UIA_SplitButtonControlTypeId {
+                        Kind::Button
+                    } else if kind == UIA_ScrollBarControlTypeId {
+                        Kind::ScrollBar
                     } else if CONTROLS.contains(&kind) {
                         Kind::Control
                     } else {
