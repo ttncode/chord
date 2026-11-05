@@ -36,7 +36,8 @@ pub enum Kind {
 /// type. Anything inside a real control is a part of it (a file row's cells, a button's text) and
 /// gets no label, except items nested in an open item (a folder's files), which keep theirs while
 /// the open item is cut down to its own row above them. A generic box holding other clickable
-/// things gives way to them (Vimium's rule for web pages). Near-duplicates get one.
+/// things gives way to them (Vimium's rule for web pages). Near-duplicates and mostly overlapping
+/// ones get one.
 pub fn targets(elements: Vec<(Rect, Kind)>) -> Vec<Rect> {
     let same = |a: Rect, b: Rect| {
         (a.0 - b.0).abs() <= SAME && (a.1 - b.1).abs() <= SAME && (a.2 - b.2).abs() <= SAME && (a.3 - b.3).abs() <= SAME
@@ -58,13 +59,21 @@ pub fn targets(elements: Vec<(Rect, Kind)>) -> Vec<Rect> {
             // columns (Explorer's details view) or far beyond its text.
             r.2 = r.2.min(r.0 + ITEM_WIDTH_PER_HEIGHT * (r.3 - r.1));
         }
-        if !part_of_a_control && !box_around_others && !kept.iter().any(|&k| same(k, r)) {
+        if !part_of_a_control && !box_around_others && !kept.iter().any(|&k| same(k, r) || mostly_overlap(k, r)) {
             kept.push(r);
         }
     }
     kept.sort_by_key(|r| (r.1, r.0));
     kept.truncate(MAX_LABELS);
     kept
+}
+
+/// Half or more of the smaller one lies inside the other: an icon spilling out of its button, a badge
+/// on an avatar. Their labels would sit on top of each other, and clicking either hits the same thing.
+fn mostly_overlap(a: Rect, b: Rect) -> bool {
+    let area = |r: Rect| (r.2 - r.0) as i64 * (r.3 - r.1) as i64;
+    let (w, h) = (a.2.min(b.2) - a.0.max(b.0), a.3.min(b.3) - a.1.max(b.1));
+    w > 0 && h > 0 && 2 * w as i64 * h as i64 >= area(a).min(area(b))
 }
 
 /// Scroll areas worth a label, top-left first, from rectangles with the percentage of their content
@@ -183,6 +192,16 @@ mod tests {
         let toolbar = (0, 0, 200, 30);
         let (new, import) = ((10, 5, 60, 25), (70, 5, 130, 25));
         assert_eq!(targets(vec![generic(toolbar), control(new), control(import)]), vec![new, import]);
+    }
+
+    #[test]
+    fn overlapping_targets_that_are_not_nested_get_one_label() {
+        // Mattermost: an avatar button and its status badge poking out of it; labels stacked unreadably.
+        let (avatar, badge) = ((1300, 90, 1332, 122), (1316, 106, 1336, 126));
+        assert_eq!(targets(vec![control(avatar), control(badge)]), vec![avatar]);
+        // Rows that only touch keep both.
+        let (a, b) = ((0, 0, 300, 20), (0, 20, 300, 40));
+        assert_eq!(targets(vec![control(a), control(b)]), vec![a, b]);
     }
 
     #[test]

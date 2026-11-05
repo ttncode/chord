@@ -71,7 +71,7 @@ flowchart LR
 | Input capture | low-level keyboard hook; the callback only decides and hands off | `src/win.rs:733` |
 | Key logic | pure state machine with timestamps, unit-tested off Windows | `src/machine.rs:136` |
 | Configuration | TOML files re-read on every chord, no restart | `src/win.rs:581` |
-| Clicking without a mouse | UI Automation scan + Vimium-style prefix-free labels | `src/uia.rs:56`, `src/hints.rs:105` |
+| Clicking without a mouse | UI Automation scan + Vimium-style prefix-free labels | `src/uia.rs:56`, `src/hints.rs:114` |
 | Drawing | layered windows with per-pixel alpha (antialiased corners, shadows, fades) | `src/canvas.rs:158` |
 | Single instance | named mutex `Local\chord-ttncode-single-instance` | `src/win.rs:70` |
 

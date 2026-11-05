@@ -22,7 +22,7 @@ use windows::Win32::UI::Accessibility::{
 };
 use windows::Win32::Foundation::{BOOL, LPARAM, WPARAM};
 use windows::Win32::UI::WindowsAndMessaging::{
-    EnumChildWindows, GetClassNameW, GetWindowRect, SMTO_ABORTIFHUNG, SendMessageTimeoutW, WM_GETOBJECT,
+    EnumChildWindows, GA_ROOT, GetAncestor, GetClassNameW, GetWindowRect, SMTO_ABORTIFHUNG, SendMessageTimeoutW, WM_GETOBJECT,
     WindowFromPoint,
 };
 use windows::core::{Result, VARIANT};
@@ -119,8 +119,7 @@ pub fn clickable_rects(hwnd: HWND) -> Result<Vec<(Rect, Kind)>> {
                 let Ok(rect) = element.CachedBoundingRectangle() else { continue };
                 let kind = element.CachedControlType().unwrap_or_default();
                 // Covered by another window (menus, overlays, other apps): not clickable here.
-                // Any window of the same app counts as not covering (Electron stacks several).
-                let shown = center(rect).is_some_and(|c| crate::window::pid_of(WindowFromPoint(c)) == app);
+                let shown = center(rect).is_some_and(|c| shows(hwnd, app, c));
                 if debug {
                     let name = element.CachedName().map(|n| n.to_string()).unwrap_or_default();
                     let fate = if shown { "" } else { "  [covered or empty]" };
@@ -270,7 +269,7 @@ pub fn scrollable_rects(hwnd: HWND) -> Result<Vec<(Rect, f64)>> {
                     true => 0.0,
                     false => view(UIA_ScrollVerticalViewSizePropertyId).min(view(UIA_ScrollHorizontalViewSizePropertyId)),
                 };
-                if center(rect).is_some_and(|c| crate::window::pid_of(WindowFromPoint(c)) == app) {
+                if center(rect).is_some_and(|c| shows(hwnd, app, c)) {
                     rects.push(((rect.left, rect.top, rect.right, rect.bottom), shown));
                 }
             }
@@ -427,6 +426,14 @@ fn every_element(uia: &IUIAutomation, root: &IUIAutomationElement) -> Result<Str
         }
         Ok(out)
     }
+}
+
+/// `hwnd` (process `app`) is what's at screen point `c`. Any window of the same app counts (Electron
+/// stacks several), and so does a child window of another process: UWP apps (Settings) draw their
+/// content in a CoreWindow of their own process inside ApplicationFrameHost's frame.
+fn shows(hwnd: HWND, app: u32, c: POINT) -> bool {
+    let at = unsafe { WindowFromPoint(c) };
+    crate::window::pid_of(at) == app || unsafe { GetAncestor(at, GA_ROOT) } == hwnd
 }
 
 fn center(r: RECT) -> Option<POINT> {
