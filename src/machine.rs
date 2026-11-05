@@ -2,9 +2,13 @@
 //! The hook feeds it every physical key event and obeys the returned `Decision`.
 
 pub const VK_BACK: u16 = 0x08;
+pub const VK_TAB: u16 = 0x09;
+pub const VK_RETURN: u16 = 0x0D;
 pub const VK_CAPITAL: u16 = 0x14;
 pub const VK_ESCAPE: u16 = 0x1B;
 pub const VK_SPACE: u16 = 0x20;
+pub const VK_UP: u16 = 0x26;
+pub const VK_DOWN: u16 = 0x28;
 pub const VK_LWIN: u16 = 0x5B;
 pub const VK_RWIN: u16 = 0x5C;
 pub const VK_LCONTROL: u16 = 0xA2;
@@ -60,6 +64,12 @@ pub enum Effect {
     Quit,
     /// The newest letter typed in chord mode was let go: a held `repeat` chord stops.
     KeyUp,
+    /// Search is open (Tab in chord mode) and this is its text.
+    Search(Chord),
+    /// Down or Up in search: move the highlight.
+    Move { down: bool },
+    /// Enter in search: run the highlighted chord.
+    Pick,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -80,6 +90,8 @@ pub struct Machine {
     caps_used: bool,
     space_held: bool,
     chord_mode: bool,
+    /// Search swallows every key until Enter or Esc, even with Space and Caps let go; `buffer` holds its text.
+    search: bool,
     buffer: Chord,
     /// Last chord run with Caps or Shift, repeated by a Caps tap on an empty buffer.
     last: Chord,
@@ -107,6 +119,7 @@ impl Machine {
             caps_used: false,
             space_held: false,
             chord_mode: false,
+            search: false,
             buffer: Chord::new(),
             last: Chord::new(),
             last_space_ms: 0,
@@ -141,6 +154,12 @@ impl Machine {
         if down {
             self.last_down = vk;
         }
+        // A forgotten search must not eat the keyboard: after a long silence the key goes through.
+        if down && self.search && idle {
+            self.search = false;
+            let decision = self.key(vk, down);
+            return Decision { block: decision.block, effect: Some(Effect::Cancel) };
+        }
         let decision = self.key(vk, down);
         if space_lost {
             return Decision { block: decision.block, effect: Some(Effect::Cancel) };
@@ -172,6 +191,9 @@ impl Machine {
     }
 
     fn press(&mut self, vk: u16, i: usize) -> Decision {
+        if self.search && !self.ctrl_alt_win_held() {
+            return self.search_press(vk, i);
+        }
         match vk {
             VK_SPACE => {
                 let repeat = self.space_held;
@@ -225,6 +247,12 @@ impl Machine {
                 self.buffer = Chord::new();
                 self.block(i, Some(Effect::Show(self.buffer)))
             }
+            VK_TAB => {
+                self.chord_mode = false;
+                self.search = true;
+                self.buffer = Chord::new();
+                self.block(i, Some(Effect::Search(self.buffer)))
+            }
             _ => match char_of(vk) {
                 Some(c) if self.shift_held() && self.buffer.len < CHORD_CAP => {
                     let mut fired = self.buffer;
@@ -271,6 +299,39 @@ impl Machine {
         Decision { block: true, effect: None }
     }
 
+    /// No blocked check here: auto-repeat types and moves like in any search box.
+    fn search_press(&mut self, vk: u16, i: usize) -> Decision {
+        let effect = match vk {
+            VK_ESCAPE | VK_CAPITAL => {
+                self.search = false;
+                // Caps here is the start of a new chord: its release must not toggle Caps Lock.
+                if vk == VK_CAPITAL {
+                    self.caps_held = true;
+                    self.caps_used = true;
+                }
+                Effect::Cancel
+            }
+            VK_RETURN => {
+                self.search = false;
+                Effect::Pick
+            }
+            VK_DOWN | VK_UP => Effect::Move { down: vk == VK_DOWN },
+            VK_BACK => {
+                self.buffer.len = if self.shift_held() { 0 } else { self.buffer.len.saturating_sub(1) };
+                Effect::Search(self.buffer)
+            }
+            _ => match char_of(vk).or((vk == VK_SPACE).then_some(b' ')) {
+                Some(c) if self.buffer.len < CHORD_CAP => {
+                    self.buffer.bytes[self.buffer.len] = c;
+                    self.buffer.len += 1;
+                    Effect::Search(self.buffer)
+                }
+                _ => return self.block(i, None),
+            },
+        };
+        self.block(i, Some(effect))
+    }
+
     fn block(&mut self, i: usize, effect: Option<Effect>) -> Decision {
         self.blocked[i] = true;
         Decision { block: true, effect }
@@ -298,6 +359,25 @@ fn is_modifier(vk: u16) -> bool {
 /// The chord to try after `buffer` grew by one letter. `ran` is (typed letters, chord) of the last
 /// `repeat` chord run: one more letter re-runs that chord with its last letter swapped for the new
 /// one, so `j j k` scrolls down, down, up instead of looking up `jj` and `jjk`.
+/// The highlighted row after Down (`down`) or Up in a list of `len` rows; it stops at either end.
+pub fn step(selected: Option<usize>, len: usize, down: bool) -> Option<usize> {
+    let last = len.checked_sub(1)?;
+    Some(match (selected, down) {
+        (None, true) => 0,
+        (None, false) => last,
+        (Some(i), true) => (i + 1).min(last),
+        (Some(i), false) => i.saturating_sub(1),
+    })
+}
+
+/// The first row to draw when `room` rows fit, so the highlighted one is on screen.
+pub fn first_shown(selected: Option<usize>, room: usize) -> usize {
+    match selected {
+        Some(i) if room > 0 && i >= room => i + 1 - room,
+        _ => 0,
+    }
+}
+
 pub fn repeat_candidate(ran: Option<(&str, &str)>, buffer: &str) -> String {
     if let Some((typed, chord)) = ran {
         if let Some(letter) = buffer.strip_prefix(typed).filter(|rest| rest.chars().count() == 1) {
@@ -385,6 +465,76 @@ mod tests {
         press(&mut m, VK_CAPITAL);
         press(&mut m, VK_SPACE);
         m
+    }
+
+    #[test]
+    fn tab_opens_search_that_stays_open_after_space_and_caps_are_let_go() {
+        let mut m = in_chord_mode();
+        assert_eq!(press(&mut m, VK_TAB), block_with(Effect::Search(chord(""))));
+        assert_eq!(release(&mut m, VK_TAB), block());
+        assert_eq!(release(&mut m, VK_SPACE), block());
+        assert_eq!(release(&mut m, VK_CAPITAL), block_with(Effect::ResyncCapsLight));
+        assert_eq!(press(&mut m, G), block_with(Effect::Search(chord("g"))));
+        assert_eq!(press(&mut m, G), block_with(Effect::Search(chord("gg"))));
+        assert_eq!(press(&mut m, VK_SPACE), block_with(Effect::Search(chord("gg "))));
+        assert_eq!(release(&mut m, VK_SPACE), block());
+        assert_eq!(press(&mut m, VK_BACK), block_with(Effect::Search(chord("gg"))));
+        assert_eq!(press(&mut m, VK_DOWN), block_with(Effect::Move { down: true }));
+        assert_eq!(press(&mut m, VK_DOWN), block_with(Effect::Move { down: true }));
+        assert_eq!(press(&mut m, VK_UP), block_with(Effect::Move { down: false }));
+        assert_eq!(press(&mut m, VK_RETURN), block_with(Effect::Pick));
+        assert_eq!(release(&mut m, VK_RETURN), block());
+        assert_eq!(press(&mut m, D), pass());
+    }
+
+    #[test]
+    fn esc_closes_search_and_ctrl_shortcuts_pass_through_it() {
+        let mut m = in_chord_mode();
+        press(&mut m, VK_TAB);
+        press(&mut m, VK_LCONTROL);
+        assert_eq!(press(&mut m, G), pass());
+        release(&mut m, VK_LCONTROL);
+        assert_eq!(press(&mut m, VK_ESCAPE), block_with(Effect::Cancel));
+        assert_eq!(press(&mut m, G), pass());
+    }
+
+    #[test]
+    fn caps_in_search_closes_it_and_starts_a_new_chord() {
+        let mut m = in_chord_mode();
+        press(&mut m, VK_TAB);
+        release(&mut m, VK_SPACE);
+        release(&mut m, VK_CAPITAL);
+        assert_eq!(press(&mut m, VK_CAPITAL), block_with(Effect::Cancel));
+        assert_eq!(press(&mut m, VK_SPACE), block_with(Effect::Enter));
+    }
+
+    #[test]
+    fn a_forgotten_search_lets_keys_through_after_a_long_silence() {
+        let mut m = Machine::new();
+        m.key_at(VK_CAPITAL, true, 1_000);
+        m.key_at(VK_SPACE, true, 1_100);
+        m.key_at(VK_TAB, true, 1_200);
+        assert_eq!(m.key_at(G, true, 1_300), block_with(Effect::Search(chord("g"))));
+        assert_eq!(m.key_at(G, true, 1_300 + IDLE_MS + 1), Decision { block: false, effect: Some(Effect::Cancel) });
+    }
+
+    #[test]
+    fn the_highlight_starts_at_either_end_and_stops_there() {
+        assert_eq!(step(None, 5, true), Some(0));
+        assert_eq!(step(None, 5, false), Some(4));
+        assert_eq!(step(Some(0), 5, true), Some(1));
+        assert_eq!(step(Some(4), 5, true), Some(4));
+        assert_eq!(step(Some(0), 5, false), Some(0));
+        assert_eq!(step(None, 0, true), None);
+    }
+
+    #[test]
+    fn the_list_scrolls_just_enough_to_show_the_highlight() {
+        assert_eq!(first_shown(None, 10), 0);
+        assert_eq!(first_shown(Some(9), 10), 0);
+        assert_eq!(first_shown(Some(10), 10), 1);
+        assert_eq!(first_shown(Some(25), 10), 16);
+        assert_eq!(first_shown(Some(3), 0), 0);
     }
 
     #[test]

@@ -40,6 +40,7 @@ Inside chord mode:
 | `Shift` + letter | Run the typed letters plus this letter, keep the typed letters (`t` then `Shift`+`t`,`s`,`p` runs `tt`, `ts`, `tp`) |
 | `j` `k` `h` `l` (nothing typed) | Scroll down / up / left / right. Tap again to scroll again (`j j j k`), or hold to glide |
 | Ctrl / Alt / Win + key | Passed to the app as a normal shortcut |
+| `Tab` | Search chords by name or keys when you forgot one. Let go of Caps Lock and Space and type words (`down` finds "Go to Downloads"). `Down` / `Up` pick, `Enter` runs, `Esc` closes. Label chords (`;`) only show their keys here. Search closes when another window comes in front or after 15 s without a key |
 
 Caps Lock alone still toggles Caps Lock. Space alone still types a space.
 
@@ -201,6 +202,7 @@ Vietnamese Telex (switch to it with `Win + Space`):
 Normal typing:
 - [ ] Holding Space alone types spaces as usual.
 - [ ] `Ctrl + Space + Esc` always quits.
+- [ ] Caps Lock + Space + `Tab`, release both, type `down`: the list shows matching chords; `Enter` runs the highlighted one, `Esc` closes, typing goes back to the app.
 
 </details>
 

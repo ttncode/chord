@@ -46,7 +46,7 @@ use crate::{hints, uia};
 use crate::panel;
 use crate::window;
 use crate::keys::{Key, parse_shortcut};
-use crate::machine::{Effect, Machine, STORM_MAX, STORM_WINDOW_MS, Storm, VK_CAPITAL, VK_SPACE, repeat_candidate};
+use crate::machine::{Effect, Machine, STORM_MAX, STORM_WINDOW_MS, Storm, VK_CAPITAL, VK_SPACE, repeat_candidate, step};
 
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 const CAPS: [Key; 1] = [Key { vk: VK_CAPITAL, extended: false }];
@@ -137,7 +137,14 @@ impl Session {
             typed: buffer.to_string(),
             rows: matching.cloned().collect(),
             groups: groups.cloned().collect(),
+            search: false,
+            selected: None,
         }
+    }
+
+    fn search_view(&self, query: &str, selected: Option<usize>) -> panel::View {
+        let rows = config::search(&self.chords, query);
+        panel::View { app: self.app.clone(), typed: query.to_string(), rows, groups: Vec::new(), search: true, selected }
     }
 
     /// The action of `chord` if it is a `repeat` chord here.
@@ -297,6 +304,8 @@ pub fn run(chords_dir: PathBuf) {
     let mut held: Option<Held> = None;
     // (typed letters, chord) of the repeat chord run last, so releasing Space doesn't run it once more.
     let mut ran: Option<(String, String)> = None;
+    // Open search: its text, the highlighted row, and the window in front when it opened.
+    let mut search: Option<(String, Option<usize>, HWND)> = None;
     loop {
         let effect = match &mut held {
             Some(h) => match rx.recv_timeout(h.next.saturating_duration_since(Instant::now())) {
@@ -307,9 +316,19 @@ pub fn run(chords_dir: PathBuf) {
                 }
                 Err(RecvTimeoutError::Disconnected) => break,
             },
-            None => match rx.recv() {
+            // Duration::MAX makes recv_timeout wait like recv.
+            None => match rx.recv_timeout(if search.is_some() { Duration::from_millis(250) } else { Duration::MAX }) {
                 Ok(effect) => effect,
-                Err(_) => break,
+                Err(RecvTimeoutError::Timeout) => {
+                    // Search swallows the keyboard, so it closes once the user moves to another window.
+                    if search.as_ref().is_some_and(|(_, _, w)| *w != unsafe { GetForegroundWindow() }) {
+                        search = None;
+                        panel::hide();
+                        reset_hook();
+                    }
+                    continue;
+                }
+                Err(RecvTimeoutError::Disconnected) => break,
             },
         };
         held = None;
@@ -321,6 +340,7 @@ pub fn run(chords_dir: PathBuf) {
             Effect::KeyUp => {}
             Effect::Enter => {
                 ran = None;
+                search = None;
                 buffer.clear();
                 end_hints(&mut hints);
                 let s = Session::start(&chords_dir);
@@ -385,7 +405,34 @@ pub fn run(chords_dir: PathBuf) {
                 }
                 show(&buffer);
             }
+            Effect::Search(query) => {
+                let Some(s) = &session else { continue };
+                let window = search.take().map_or_else(|| unsafe { GetForegroundWindow() }, |(_, _, w)| w);
+                let mut view = s.search_view(query.as_str(), None);
+                view.selected = (!view.rows.is_empty()).then_some(0);
+                search = Some((query.as_str().to_string(), view.selected, window));
+                panel::show(view);
+            }
+            Effect::Move { down } => {
+                let (Some(s), Some((query, selected, _))) = (&session, &mut search) else { continue };
+                let mut view = s.search_view(query, None);
+                *selected = step(*selected, view.rows.len(), down);
+                view.selected = *selected;
+                panel::show(view);
+            }
+            Effect::Pick => {
+                panel::hide();
+                let (Some(s), Some((query, Some(i), _))) = (&session, search.take()) else { continue };
+                let Some((chord, _)) = s.search_view(&query, None).rows.into_iter().nth(i) else { continue };
+                if s.hint_prefix(&chord).is_some() {
+                    // shortcut: label chords need Space held to type the label, so search only shows their keys.
+                    say!("  -> {chord} shows labels: hold Caps Lock + Space and type it");
+                } else {
+                    fire(&chords_dir, &chord);
+                }
+            }
             Effect::Cancel => {
+                search = None;
                 panel::hide();
                 end_hints(&mut hints);
                 say!("  (cancelled)");

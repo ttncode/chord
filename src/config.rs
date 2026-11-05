@@ -200,6 +200,18 @@ pub fn available(files: &[ChordFile], exe: &str, title: &str) -> Vec<(String, St
         .collect()
 }
 
+/// The `(chord, name)` rows where every word of `query` is in the chord or its name, ignoring case.
+pub fn search(chords: &[(String, String)], query: &str) -> Vec<(String, String)> {
+    let words: Vec<String> = query.split_whitespace().map(str::to_lowercase).collect();
+    chords.iter()
+        .filter(|(chord, name)| {
+            let text = format!("{chord} {}", name.to_lowercase());
+            words.iter().all(|w| text.contains(w.as_str()))
+        })
+        .cloned()
+        .collect()
+}
+
 /// The hint chord a chord starts with (`;` in `;aj`): its length and what it labels. The rest is a label.
 pub fn hint_prefix(files: &[ChordFile], exe: &str, title: &str, chord: &str) -> Option<(usize, Hint)> {
     chord.char_indices().map(|(i, c)| i + c.len_utf8()).find_map(|end| {
@@ -412,6 +424,20 @@ mod tests {
         file.expect("file")
     }
 
+
+    #[test]
+    fn search_matches_every_word_in_the_chord_or_its_name() {
+        let chords = vec![
+            ("gd".to_string(), "Go to Downloads".to_string()),
+            ("/ms".to_string(), "Mouse: pick scroll area".to_string()),
+        ];
+        let keys = |q| search(&chords, q).into_iter().map(|(c, _)| c).collect::<Vec<_>>();
+        assert_eq!(keys("down"), ["gd"]);
+        assert_eq!(keys("scroll mouse"), ["/ms"]);
+        assert_eq!(keys("/m"), ["/ms"]);
+        assert_eq!(keys(""), ["gd", "/ms"]);
+        assert!(keys("zzz").is_empty());
+    }
     #[test]
     fn parses_all_action_kinds() {
         let f = ok(r#"

@@ -59,6 +59,10 @@ pub struct View {
     pub rows: Vec<(String, String)>,
     /// Chord groups (`"/w"`, `"Window"`) whose prefix starts with what was typed, for the reminder line.
     pub groups: Vec<(String, String)>,
+    /// `typed` is search text (Tab), not chord keys.
+    pub search: bool,
+    /// Row highlighted in search, counted in `rows`.
+    pub selected: Option<usize>,
 }
 
 static PANEL: AtomicIsize = AtomicIsize::new(0);
@@ -66,7 +70,7 @@ static OVERLAY: AtomicIsize = AtomicIsize::new(0);
 static TRAY_ICON: AtomicIsize = AtomicIsize::new(0);
 static HINTS: Mutex<(RECT, Vec<(POINT, String)>, String)> =
     Mutex::new((RECT { left: 0, top: 0, right: 0, bottom: 0 }, Vec::new(), String::new()));
-static VIEW: Mutex<View> = Mutex::new(View { app: String::new(), typed: String::new(), rows: Vec::new(), groups: Vec::new() });
+static VIEW: Mutex<View> = Mutex::new(View { app: String::new(), typed: String::new(), rows: Vec::new(), groups: Vec::new(), search: false, selected: None });
 static CHORDS_DIR: OnceLock<PathBuf> = OnceLock::new();
 /// Explorer broadcasts this after it restarts; tray icons must be added again.
 static TASKBAR_CREATED: AtomicU32 = AtomicU32::new(0);
@@ -496,7 +500,9 @@ fn render_panel() -> Option<(Canvas, POINT)> {
     let mut rows: Vec<(String, String)> = view.rows.clone();
     // The last line holds "N more" / "No chord …" on the left and the groups on the right.
     let keep = if !view.groups.is_empty() || rows.len() > room { room - 1 } else { room };
+    let first = crate::machine::first_shown(view.selected, keep);
     let more = rows.len().saturating_sub(keep);
+    rows.drain(..first.min(rows.len()));
     rows.truncate(keep);
     let footer = more > 0 || rows.is_empty() || !view.groups.is_empty();
     let lines = (rows.len() + usize::from(footer)) as i32;
@@ -522,7 +528,8 @@ fn render_panel() -> Option<(Canvas, POINT)> {
     canvas.text(RECT { right: head.left + icon_width, ..head }, "\u{2318}", symbol, colors.secondary, DT_LEFT | DT_VCENTER);
     let query_area = RECT { left: head.left + icon_width, right: head.left + (head.right - head.left) * 2 / 3, ..head };
     if view.typed.is_empty() {
-        canvas.text(query_area, "Type a chord", query, colors.secondary, DT_LEFT | DT_VCENTER);
+        let hint = if view.search { "Search chords" } else { "Type a chord" };
+        canvas.text(query_area, hint, query, colors.secondary, DT_LEFT | DT_VCENTER);
     } else {
         canvas.text(query_area, &view.typed, query, colors.text, DT_LEFT | DT_VCENTER | DT_END_ELLIPSIS);
     }
@@ -534,9 +541,13 @@ fn render_panel() -> Option<(Canvas, POINT)> {
     let key_pad = s(8);
     let key_width = rows.iter().map(|(chord, _)| canvas.measure(chord, mono)).max().unwrap_or(0) + 2 * key_pad;
     let mut y = line + 1 + gap;
-    for (chord, name) in &rows {
+    for (shown, (chord, name)) in rows.iter().enumerate() {
         let cell = RECT { left: head.left, top: y, right: head.right, bottom: y + row };
-        let typed = common_prefix(chord, &view.typed);
+        if view.selected == Some(first + shown) {
+            let band = RECT { left: inner.left + s(6), right: inner.right - s(6), ..cell };
+            canvas.round_rect(band, s(style::KEYCAP_RADIUS), mix(colors.background, colors.accent, 0.25));
+        }
+        let typed = if view.search { 0 } else { common_prefix(chord, &view.typed) };
         let chord_width = canvas.measure(chord, mono) + 2 * key_pad;
         let cap = RECT { left: cell.left, top: cell.top + s(4), right: cell.left + chord_width, bottom: cell.bottom - s(4) };
         canvas.round_rect(cap, s(style::KEYCAP_RADIUS), colors.keycap);
@@ -552,7 +563,8 @@ fn render_panel() -> Option<(Canvas, POINT)> {
     let note = if more > 0 {
         Some((format!("{more} more"), small))
     } else if rows.is_empty() {
-        Some(("No chord starts with these keys".to_string(), body))
+        let text = if view.search { "No chord matches" } else { "No chord starts with these keys" };
+        Some((text.to_string(), body))
     } else {
         None
     };

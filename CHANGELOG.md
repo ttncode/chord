@@ -2,6 +2,16 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- `Tab` in chord mode opens search: let go of Caps Lock and Space, type words to find a chord by name or keys, `Down` / `Up` to pick, `Enter` to run, `Esc` to close.
+
+### Removed
+
+- `Down` / `Up` in chord mode from 0.4.2. Search replaces it.
+
 ## [0.4.2] - 2026-11-04
 
 ### Added
