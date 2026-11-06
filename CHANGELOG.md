@@ -2,6 +2,16 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/).
 
+## [0.4.14] - 2026-11-06
+
+### Added
+
+- `excel.toml`: `tn` / `tp` switch to the next / previous sheet. Excel reports every sheet tab with the whole sheet's area instead of the tab's spot, so labels can't point at them.
+
+### Fixed
+
+- `h`/`l` in Excel: 0.4.13 failed reading Excel's active window (a dispatch object windows-rs wouldn't convert), so nothing scrolled. Checked against a running Excel this time.
+
 ## [0.4.13] - 2026-11-06
 
 ### Fixed
@@ -205,6 +215,7 @@ First release. Windows x64; tested on Windows 10 22H2.
 - Elements an app draws without telling UI Automation (custom-drawn apps, Postman's ☰ and window buttons) get no label.
 - `chord.exe` is not signed; Windows SmartScreen may warn on first run.
 
+[0.4.14]: https://github.com/ttncode/chord/releases/tag/v0.4.14
 [0.4.13]: https://github.com/ttncode/chord/releases/tag/v0.4.13
 [0.4.12]: https://github.com/ttncode/chord/releases/tag/v0.4.12
 [0.4.11]: https://github.com/ttncode/chord/releases/tag/v0.4.11
