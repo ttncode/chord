@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use std::sync::atomic::{AtomicI32, Ordering};
 
-use windows::Win32::Foundation::{BOOL, HWND, LPARAM, WPARAM};
+use windows::Win32::Foundation::{BOOL, HWND, LPARAM};
 use windows::Win32::Graphics::Dwm::{DWMWA_CLOAKED, DwmGetWindowAttribute};
 use windows::Win32::UI::Input::KeyboardAndMouse::{
     INPUT, INPUT_0, INPUT_MOUSE, MOUSE_EVENT_FLAGS, MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP,
@@ -15,10 +15,14 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{
 use windows::Win32::UI::WindowsAndMessaging::{
     EnumWindows, GW_OWNER, GetForegroundWindow, GetSystemMetrics, SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN,
     SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN, SetCursorPos, GetWindow, GetWindowTextLengthW, GetWindowThreadProcessId, IsIconic,
-    IsWindowVisible, SW_RESTORE, SetForegroundWindow, ShowWindow, FindWindowExW, GetClassNameW, PostMessageW,
-    SB_LINELEFT, SB_LINERIGHT, WM_HSCROLL,
+    IsWindowVisible, SW_RESTORE, SetForegroundWindow, ShowWindow, GetClassNameW,
 };
-use windows::core::w;
+use windows::Win32::Foundation::E_FAIL;
+use windows::Win32::System::Com::{
+    CLSIDFromProgID, COINIT_MULTITHREADED, CoInitializeEx, DISPATCH_FLAGS, DISPATCH_METHOD, DISPATCH_PROPERTYGET, DISPPARAMS, IDispatch,
+};
+use windows::Win32::System::Ole::GetActiveObject;
+use windows::core::{GUID, IUnknown, Interface, PCWSTR, VARIANT, w};
 
 use crate::config::Mouse;
 
@@ -121,37 +125,58 @@ pub fn scroll(action: Mouse, amount: i32) -> bool {
         Mouse::ScrollRight => (MOUSEEVENTF_HWHEEL, 1),
         _ => return false,
     };
-    if flag == MOUSEEVENTF_HWHEEL {
-        if let Some(grid) = excel_grid() {
-            // A held key sends parts of a notch; Excel scrolls whole columns, so carry the rest.
-            static REST: AtomicI32 = AtomicI32::new(0);
-            let total = REST.load(Ordering::Relaxed) + amount;
-            REST.store(total % WHEEL_STEP, Ordering::Relaxed);
-            let line = if sign > 0 { SB_LINERIGHT } else { SB_LINELEFT };
-            for _ in 0..total / WHEEL_STEP {
-                unsafe {
-                    let _ = PostMessageW(grid, WM_HSCROLL, WPARAM(line.0 as usize), LPARAM(0));
-                }
-            }
-            return true;
+    if flag == MOUSEEVENTF_HWHEEL && foreground_class() == "XLMAIN" {
+        // A held key sends parts of a notch; Excel scrolls whole columns, so carry the rest.
+        static REST: AtomicI32 = AtomicI32::new(0);
+        let total = REST.load(Ordering::Relaxed) + amount;
+        REST.store(total % WHEEL_STEP, Ordering::Relaxed);
+        if total >= WHEEL_STEP {
+            excel_scroll(sign * total / WHEEL_STEP);
         }
+        return true;
     }
     send_mouse(&[flag], sign * amount);
     true
 }
 
-/// The sheet grid of the Excel window in front. Excel ignores the horizontal wheel, but its grid
-/// scrolls a column per WM_HSCROLL line, as its scroll bar sends.
-fn excel_grid() -> Option<HWND> {
-    unsafe {
-        let main = GetForegroundWindow();
-        let mut class = [0u16; 16];
-        let len = GetClassNameW(main, &mut class) as usize;
-        if String::from_utf16_lossy(&class[..len]) != "XLMAIN" {
-            return None;
+fn foreground_class() -> String {
+    let mut class = [0u16; 32];
+    let len = unsafe { GetClassNameW(GetForegroundWindow(), &mut class) } as usize;
+    String::from_utf16_lossy(&class[..len])
+}
+
+/// Scrolls the active Excel window `columns` columns right (negative: left) with its own SmallScroll:
+/// Excel ignores the horizontal wheel, and its grid ignores scroll bar messages too.
+fn excel_scroll(columns: i32) {
+    let scroll = || -> windows::core::Result<()> {
+        unsafe {
+            let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
+            let mut app = None;
+            GetActiveObject(&CLSIDFromProgID(w!("Excel.Application"))?, None, &mut app)?;
+            let app: IDispatch = app.ok_or(windows::core::Error::from(E_FAIL))?.cast()?;
+            let active = dispatch(&app, w!("ActiveWindow"), DISPATCH_PROPERTYGET, &mut [])?;
+            let active: IDispatch = IUnknown::try_from(&active)?.cast()?;
+            // SmallScroll(Down, Up, ToRight, ToLeft); COM takes arguments last first.
+            let mut args = [VARIANT::from((-columns).max(0)), VARIANT::from(columns.max(0)), VARIANT::from(0), VARIANT::from(0)];
+            dispatch(&active, w!("SmallScroll"), DISPATCH_METHOD, &mut args)?;
+            Ok(())
         }
-        let desk = FindWindowExW(main, None, w!("XLDESK"), None).ok()?;
-        FindWindowExW(desk, None, w!("EXCEL7"), None).ok()
+    };
+    if let Err(e) = scroll() {
+        say!("  ! could not scroll Excel: {e}");
+    }
+}
+
+/// Calls `name` on a COM automation object (property get or method) with positional `args`.
+unsafe fn dispatch(target: &IDispatch, name: PCWSTR, flags: DISPATCH_FLAGS, args: &mut [VARIANT]) -> windows::core::Result<VARIANT> {
+    const LOCALE_USER_DEFAULT: u32 = 0x0400;
+    let mut id = 0;
+    unsafe {
+        target.GetIDsOfNames(&GUID::zeroed(), &name, 1, LOCALE_USER_DEFAULT, &mut id)?;
+        let params = DISPPARAMS { rgvarg: args.as_mut_ptr(), cArgs: args.len() as u32, ..Default::default() };
+        let mut result = VARIANT::default();
+        target.Invoke(id, &GUID::zeroed(), LOCALE_USER_DEFAULT, flags, &params, Some(&mut result), None, None)?;
+        Ok(result)
     }
 }
 
