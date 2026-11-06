@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/).
 
+## [0.4.13] - 2026-11-06
+
+### Fixed
+
+- `h`/`l` really scroll Excel sideways now: 0.4.12's scroll messages turned out to be ignored too, so chord calls Excel's own SmallScroll.
+
 ## [0.4.12] - 2026-11-06
 
 ### Fixed
@@ -199,6 +205,7 @@ First release. Windows x64; tested on Windows 10 22H2.
 - Elements an app draws without telling UI Automation (custom-drawn apps, Postman's ☰ and window buttons) get no label.
 - `chord.exe` is not signed; Windows SmartScreen may warn on first run.
 
+[0.4.13]: https://github.com/ttncode/chord/releases/tag/v0.4.13
 [0.4.12]: https://github.com/ttncode/chord/releases/tag/v0.4.12
 [0.4.11]: https://github.com/ttncode/chord/releases/tag/v0.4.11
 [0.4.10]: https://github.com/ttncode/chord/releases/tag/v0.4.10
