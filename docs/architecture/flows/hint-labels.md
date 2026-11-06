@@ -28,12 +28,12 @@ sequenceDiagram
 | 1 | Typing exactly a hint chord (`;`, `'`) opens labels; Caps repeat and Shift reopen them after a click | `src/win.rs:420`, `src/win.rs:450`, `src/config.rs:216` |
 | 2 | The panel is hidden synchronously before the scan | `src/win.rs:547`, `src/panel.rs:166` |
 | 3 | Up to 3 reads (0, 300, 600 ms) while Electron rebuilds its tree | `src/win.rs:255` |
-| 4 | Chromium page windows get a wake-up `WM_GETOBJECT` | `src/uia.rs:324` |
-| 5 | An open modal limits the scan: the focused one first, then one not covered at its centre | `src/uia.rs:157`, `src/uia.rs:366` |
-| 6 | Elements whose centre is covered by another app's window are dropped (a child window of another process counts as the app's own: UWP content in ApplicationFrameHost) | `src/uia.rs:124` |
-| 7 | An empty read falls back to the page window (Electron after a minimize) | `src/uia.rs:192` |
+| 4 | Chromium page windows get a wake-up `WM_GETOBJECT` | `src/uia.rs:330` |
+| 5 | An open modal limits the scan: the focused one first, then one not covered at its centre | `src/uia.rs:163`, `src/uia.rs:372` |
+| 6 | Elements whose centre is covered by another app's window are dropped (a child window of another process counts as the app's own: UWP content in ApplicationFrameHost) | `src/uia.rs:130` |
+| 7 | An empty read falls back to the page window (Electron after a minimize) | `src/uia.rs:198` |
 | 8 | Scroll bars and their arrows and track get no label. Parts of real controls and generic boxes around other clickables lose their label, except buttons (a tab's close button) and items nested in an open tree/list item (which is cut to its own row); of targets overlapping by half the smaller one or more, only the first keeps a label; cap 300 after filtering | `src/hints.rs:45` |
-| 8b | `hints = "scroll"` reads scroll areas instead (scroll pattern, scrollable; plus navigation landmarks, as Chromium can leave a sidebar's scroll box out of the tree); only areas ≥ 80 px a side showing < 95 % of their content (Chromium calls 1 px of overflow scrollable); nested ones all keep a label; none found falls back to the clickable read. A pick only moves the pointer | `src/uia.rs:235`, `src/hints.rs:108` |
+| 8b | `hints = "scroll"` reads scroll areas instead (scroll pattern, scrollable; plus navigation landmarks, as Chromium can leave a sidebar's scroll box out of the tree); only areas ≥ 80 px a side showing < 95 % of their content (Chromium calls 1 px of overflow scrollable); nested ones all keep a label; none found falls back to the clickable read. A pick only moves the pointer | `src/uia.rs:241`, `src/hints.rs:108` |
 | 8c | When a label would cover an earlier one's and the two elements overlap too (parts of one thing), only the first keeps a label; labels are then reassigned and checked again | `src/hints.rs:81`, `src/win.rs:297` |
 | 9 | Prefix-free labels from `sadfjklewcmpgh` | `src/hints.rs:137` |
 | 10 | Labels drawn at each element's top-left on a click-through overlay | `src/panel.rs:586` |
@@ -46,4 +46,4 @@ sequenceDiagram
 | UI Automation errors (e.g. `0x80040201` in Chrome) | `could not read this window's buttons`, after 3 tries | `src/win.rs:255` |
 | Nothing clickable reported | `no clickable elements found`; Space up says `no labels on screen to pick from` | `src/win.rs:255`, `src/win.rs:522` |
 | Element exists only as pixels (custom-drawn, Postman's ☰ and window buttons) | no label; nothing to read | — |
-| A closed dialog lingers in the tree | ignored unless something in it is clickable | `src/uia.rs:157` |
+| A closed dialog lingers in the tree | ignored unless something in it is clickable | `src/uia.rs:163` |

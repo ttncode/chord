@@ -2,7 +2,9 @@
 
 use std::time::Duration;
 
-use windows::Win32::Foundation::{BOOL, HWND, LPARAM};
+use std::sync::atomic::{AtomicI32, Ordering};
+
+use windows::Win32::Foundation::{BOOL, HWND, LPARAM, WPARAM};
 use windows::Win32::Graphics::Dwm::{DWMWA_CLOAKED, DwmGetWindowAttribute};
 use windows::Win32::UI::Input::KeyboardAndMouse::{
     INPUT, INPUT_0, INPUT_MOUSE, MOUSE_EVENT_FLAGS, MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP,
@@ -13,8 +15,10 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{
 use windows::Win32::UI::WindowsAndMessaging::{
     EnumWindows, GW_OWNER, GetForegroundWindow, GetSystemMetrics, SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN,
     SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN, SetCursorPos, GetWindow, GetWindowTextLengthW, GetWindowThreadProcessId, IsIconic,
-    IsWindowVisible, SW_RESTORE, SetForegroundWindow, ShowWindow,
+    IsWindowVisible, SW_RESTORE, SetForegroundWindow, ShowWindow, FindWindowExW, GetClassNameW, PostMessageW,
+    SB_LINELEFT, SB_LINERIGHT, WM_HSCROLL,
 };
+use windows::core::w;
 
 use crate::config::Mouse;
 
@@ -117,8 +121,38 @@ pub fn scroll(action: Mouse, amount: i32) -> bool {
         Mouse::ScrollRight => (MOUSEEVENTF_HWHEEL, 1),
         _ => return false,
     };
+    if flag == MOUSEEVENTF_HWHEEL {
+        if let Some(grid) = excel_grid() {
+            // A held key sends parts of a notch; Excel scrolls whole columns, so carry the rest.
+            static REST: AtomicI32 = AtomicI32::new(0);
+            let total = REST.load(Ordering::Relaxed) + amount;
+            REST.store(total % WHEEL_STEP, Ordering::Relaxed);
+            let line = if sign > 0 { SB_LINERIGHT } else { SB_LINELEFT };
+            for _ in 0..total / WHEEL_STEP {
+                unsafe {
+                    let _ = PostMessageW(grid, WM_HSCROLL, WPARAM(line.0 as usize), LPARAM(0));
+                }
+            }
+            return true;
+        }
+    }
     send_mouse(&[flag], sign * amount);
     true
+}
+
+/// The sheet grid of the Excel window in front. Excel ignores the horizontal wheel, but its grid
+/// scrolls a column per WM_HSCROLL line, as its scroll bar sends.
+fn excel_grid() -> Option<HWND> {
+    unsafe {
+        let main = GetForegroundWindow();
+        let mut class = [0u16; 16];
+        let len = GetClassNameW(main, &mut class) as usize;
+        if String::from_utf16_lossy(&class[..len]) != "XLMAIN" {
+            return None;
+        }
+        let desk = FindWindowExW(main, None, w!("XLDESK"), None).ok()?;
+        FindWindowExW(desk, None, w!("EXCEL7"), None).ok()
+    }
 }
 
 /// Puts the pointer at screen point (`x`, `y`). SetCursorPos alone isn't mouse input: a pointer hidden

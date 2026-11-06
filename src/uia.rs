@@ -81,6 +81,12 @@ pub fn clickable_rects(hwnd: HWND) -> Result<Vec<(Rect, Kind)>> {
         ] {
             clickable = uia.CreateOrCondition(&clickable, &is(id, true)?)?;
         }
+        // Apps seen only through the old accessibility layer (MSAA) offer none of those patterns:
+        // Excel's sheet tabs and their arrows. Tabs and buttons are there to be clicked anyway.
+        for kind in [UIA_TabItemControlTypeId, UIA_ButtonControlTypeId] {
+            let of_kind = uia.CreatePropertyCondition(UIA_ControlTypePropertyId, &VARIANT::from(kind.0))?;
+            clickable = uia.CreateOrCondition(&clickable, &of_kind)?;
+        }
         let visible = uia.CreateAndCondition(&is(UIA_IsOffscreenPropertyId, false)?, &is(UIA_IsEnabledPropertyId, true)?)?;
         // Containers are often keyboard-focusable too, but nobody means to click a whole list or pane.
         // Groups are not on the list: web apps (Postman) report their buttons as groups, and a group
