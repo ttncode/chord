@@ -223,11 +223,12 @@ pub fn hint_prefix(files: &[ChordFile], exe: &str, title: &str, chord: &str) -> 
 }
 
 /// The starter chord files, built into the program so an installed copy can create them.
-pub const STARTERS: [(&str, &str); 4] = [
+pub const STARTERS: [(&str, &str); 5] = [
     ("global.toml", include_str!("../chords/global.toml")),
     ("antigravity.toml", include_str!("../chords/antigravity.toml")),
     ("windows-terminal.toml", include_str!("../chords/windows-terminal.toml")),
     ("lazyvim.toml", include_str!("../chords/lazyvim.toml")),
+    ("excel.toml", include_str!("../chords/excel.toml")),
 ];
 
 /// Where chord files live when `--chords` isn't given: a `chords` folder in the current folder
@@ -766,7 +767,7 @@ mod tests {
         let dir = std::env::temp_dir().join(format!("chord-test-starters-{}", std::process::id())).join("chords");
         create_with_starters(&dir).unwrap();
         let (files, errors) = load_dir(&dir);
-        assert_eq!((files.len(), errors.len()), (4, 0));
+        assert_eq!((files.len(), errors.len()), (STARTERS.len(), 0));
         std::fs::remove_file(dir.join("lazyvim.toml")).unwrap();
         create_with_starters(&dir).unwrap();
         assert!(!dir.join("lazyvim.toml").exists(), "an existing folder must not be refilled");
@@ -778,9 +779,11 @@ mod tests {
         let dir = std::path::Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/chords"));
         let (files, errors) = load_dir(dir);
         assert_eq!(errors, Vec::<String>::new());
-        assert_eq!(files.len(), 4);
+        assert_eq!(files.len(), STARTERS.len());
         let gd = resolve(&files, "antigravity ide.exe", "", "gd").unwrap();
         assert_eq!(gd.chord.action, Action::Shortcut(parse_shortcut("f12").unwrap()));
+        let next_sheet = resolve(&files, "excel.exe", "", "tn").unwrap();
+        assert_eq!(next_sheet.chord.action, Action::Shortcut(parse_shortcut("ctrl+pagedown").unwrap()));
     }
 
     #[test]

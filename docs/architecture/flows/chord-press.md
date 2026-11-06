@@ -33,7 +33,7 @@ sequenceDiagram
 
 | # | Step | Where |
 | - | ---- | ----- |
-| 1 | The hook skips events tagged with `TAG`, and Caps Lock that is injected or pressed while a remote desktop or VM window is in front; the rest goes to the machine, inside `catch_unwind` | `src/win.rs:746`, `src/config.rs:237` |
+| 1 | The hook skips events tagged with `TAG`, and Caps Lock that is injected or pressed while a remote desktop or VM window is in front; the rest goes to the machine, inside `catch_unwind` | `src/win.rs:746`, `src/config.rs:238` |
 | 2 | The machine updates key state, recovers lost releases (1.5 s stale, 15 s idle), and returns block/pass plus an effect | `src/machine.rs:136` |
 | 3 | The hook hands the effect over without blocking | `src/win.rs:765` |
 | 4 | Caps Lock held + Space pressed enters chord mode | `src/machine.rs:195` |
@@ -49,7 +49,7 @@ sequenceDiagram
 | When | Result | Handled at |
 | --- | --- | --- |
 | No chord matches | console: `no chord '<chord>' for <exe> "<title>"` | `src/win.rs:590` |
-| A chord file has an error | bad chord or file skipped, error printed, others keep working | `src/config.rs:256` |
+| A chord file has an error | bad chord or file skipped, error printed, others keep working | `src/config.rs:257` |
 | Space or Caps release lost (focus change, UAC) | machine assumes it after 1.5 s or 15 s idle | `src/machine.rs:136` |
 | Windows drops the hook (timeout, sleep) | reinstalled every 5 min and on unlock/resume | `src/win.rs:721`, `src/panel.rs:291` |
 | A panic in the hook | key passes through unchanged | `src/win.rs:753` |

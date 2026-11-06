@@ -1,0 +1,7 @@
+name = "Excel"
+app = "excel.exe"
+
+[chords]
+# Excel reports no position for its sheet tabs, so labels can't reach them: switch with these.
+tn = { name = "Next sheet", shortcut = "ctrl+pagedown", repeat = true }
+tp = { name = "Previous sheet", shortcut = "ctrl+pageup", repeat = true }
