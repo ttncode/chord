@@ -22,7 +22,7 @@ use windows::Win32::System::Com::{
     CLSIDFromProgID, COINIT_MULTITHREADED, CoInitializeEx, DISPATCH_FLAGS, DISPATCH_METHOD, DISPATCH_PROPERTYGET, DISPPARAMS, IDispatch,
 };
 use windows::Win32::System::Ole::GetActiveObject;
-use windows::core::{GUID, IUnknown, Interface, PCWSTR, VARIANT, w};
+use windows::core::{GUID, Interface, PCWSTR, VARIANT, w};
 
 use crate::config::Mouse;
 
@@ -155,7 +155,13 @@ fn excel_scroll(columns: i32) {
             GetActiveObject(&CLSIDFromProgID(w!("Excel.Application"))?, None, &mut app)?;
             let app: IDispatch = app.ok_or(windows::core::Error::from(E_FAIL))?.cast()?;
             let active = dispatch(&app, w!("ActiveWindow"), DISPATCH_PROPERTYGET, &mut [])?;
-            let active: IDispatch = IUnknown::try_from(&active)?.cast()?;
+            // windows-rs converts only VT_UNKNOWN; Excel hands back VT_DISPATCH.
+            const VT_DISPATCH: u16 = 9;
+            let raw = &active.as_raw().Anonymous.Anonymous;
+            if raw.vt != VT_DISPATCH {
+                return Err(windows::core::Error::from(E_FAIL));
+            }
+            let active = IDispatch::from_raw_borrowed(&raw.Anonymous.pdispVal).ok_or(windows::core::Error::from(E_FAIL))?.clone();
             // SmallScroll(Down, Up, ToRight, ToLeft); COM takes arguments last first.
             let mut args = [VARIANT::from((-columns).max(0)), VARIANT::from(columns.max(0)), VARIANT::from(0), VARIANT::from(0)];
             dispatch(&active, w!("SmallScroll"), DISPATCH_METHOD, &mut args)?;
