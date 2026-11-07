@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/).
 
+## [0.4.15] - 2026-11-07
+
+### Fixed
+
+- `/ms` finds scroll areas Chrome leaves out of its default accessibility view, such as Discord's server list. Pages whose scroller Chrome hides entirely, such as ChatGPT's chat, get a label on their main area instead.
+- `/ms` puts each label where the pointer will go. That spot avoids the areas nested inside, so picking claude.ai's artifact scrolls the artifact, not its table of contents.
+
 ## [0.4.14] - 2026-11-06
 
 ### Added
@@ -215,6 +222,7 @@ First release. Windows x64; tested on Windows 10 22H2.
 - Elements an app draws without telling UI Automation (custom-drawn apps, Postman's ☰ and window buttons) get no label.
 - `chord.exe` is not signed; Windows SmartScreen may warn on first run.
 
+[0.4.15]: https://github.com/ttncode/chord/releases/tag/v0.4.15
 [0.4.14]: https://github.com/ttncode/chord/releases/tag/v0.4.14
 [0.4.13]: https://github.com/ttncode/chord/releases/tag/v0.4.13
 [0.4.12]: https://github.com/ttncode/chord/releases/tag/v0.4.12
