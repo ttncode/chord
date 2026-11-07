@@ -249,6 +249,8 @@ struct Hints {
     kind: Mouse,
     area: RECT,
     targets: Vec<(hints::Rect, String)>,
+    /// Targets are scroll areas: each label sits where the pointer will go.
+    areas: bool,
 }
 
 impl Hints {
@@ -258,13 +260,16 @@ impl Hints {
         }
         // Electron apps (Postman, Antigravity) build their accessibility tree only once asked, and
         // drop it again after a while unused: a read can fail or come back empty while it rebuilds.
+        let areas = std::cell::Cell::new(false);
         let read = || {
+            areas.set(false);
             if kind == Mouse::Point {
                 // Apps that scroll on their own report no scroll areas: label what's clickable instead,
                 // and the pane holding the picked element is the one the wheel scrolls.
-                let areas = uia::scrollable_rects(hwnd).map(hints::areas);
-                if matches!(&areas, Ok(rects) if !rects.is_empty()) {
-                    return areas;
+                let found = uia::scrollable_rects(hwnd).map(hints::areas);
+                if matches!(&found, Ok(rects) if !rects.is_empty()) {
+                    areas.set(true);
+                    return found;
                 }
             }
             uia::clickable_rects(hwnd).map(hints::targets)
@@ -292,18 +297,20 @@ impl Hints {
         unsafe {
             let _ = GetWindowRect(hwnd, &mut area);
         }
+        let areas = areas.get();
         // Labels change after a drop, and so do their widths: check again until nothing drops.
+        // Scroll area labels sit apart (see `spot`), so none drop.
         let mut rects = rects;
         let labels = loop {
             let labels = hints::labels(rects.len());
             let kept = hints::unstack(rects.clone(), &panel::hint_sizes(area, &labels));
-            if kept.len() == rects.len() {
+            if areas || kept.len() == rects.len() {
                 break labels;
             }
             rects = kept;
         };
         let targets = rects.into_iter().zip(labels).collect::<Vec<_>>();
-        Some(Self { key: key.to_string(), kind, area, targets })
+        Some(Self { key: key.to_string(), kind, area, targets, areas })
     }
 
     fn show(&self, typed: &str) {
@@ -312,15 +319,22 @@ impl Hints {
             .targets
             .iter()
             .filter(|(_, label)| label.starts_with(typed))
-            .map(|(r, label)| (POINT { x: r.0, y: r.1 }, label.clone()))
+            .map(|&(r, ref label)| {
+                let (x, y) = if self.areas { self.spot(r) } else { (r.0, r.1) };
+                (POINT { x, y }, label.clone())
+            })
             .collect();
         panel::show_hints(self.area, visible, typed);
     }
 
+    fn spot(&self, r: hints::Rect) -> (i32, i32) {
+        hints::spot(r, &self.targets.iter().map(|&(r, _)| r).collect::<Vec<_>>())
+    }
+
     fn click(&self, label: &str) {
         match self.targets.iter().find(|(_, l)| l == label) {
-            Some((r, _)) => {
-                let (x, y) = ((r.0 + r.2) / 2, (r.1 + r.3) / 2);
+            Some(&(r, _)) => {
+                let (x, y) = if self.areas { self.spot(r) } else { ((r.0 + r.2) / 2, (r.1 + r.3) / 2) };
                 if uia::DEBUG.load(std::sync::atomic::Ordering::Relaxed) {
                     say!("  -> {label} at ({x}, {y}): {}", uia::describe_at(x, y));
                 }

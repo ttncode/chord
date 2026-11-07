@@ -22,6 +22,9 @@ const MIN_AREA: i32 = 80;
 /// Areas showing at least this percentage of their content barely scroll.
 const MAX_SHOWN: f64 = 95.0;
 
+/// The "shown" percentage `uia::scrollable_rects` gives a page's main landmark.
+pub const MAIN: f64 = -1.0;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Kind {
     /// Clickable, but no known control type (custom, text, image).
@@ -103,15 +106,21 @@ fn mostly_overlap(a: Rect, b: Rect) -> bool {
 /// on view. Chromium calls anything that overflows by a pixel scrollable (a prompt box, a table, a
 /// clipped line), so only areas big enough to aim at and hiding a real part of their content count.
 /// Unlike `targets`, nested ones all stay: a page and the panel scrolling inside it are both choices.
-/// Near-duplicates get one.
-// shortcut: the pointer goes to an area's centre, so a page whose centre sits on an inner panel scrolls that panel; aim at an uncovered spot if it bites.
+/// Near-duplicates get one. A main landmark (`MAIN`) counts only where no real scroll area overlaps it:
+/// ChatGPT reports its chat scroller as a 2×1 pixel stub, but the wheel over its main landmark scrolls it.
 pub fn areas(rects: Vec<(Rect, f64)>) -> Vec<Rect> {
     let same = |a: Rect, b: Rect| {
         (a.0 - b.0).abs() <= SAME && (a.1 - b.1).abs() <= SAME && (a.2 - b.2).abs() <= SAME && (a.3 - b.3).abs() <= SAME
     };
     let mut kept: Vec<Rect> = Vec::new();
     let worth = |&(r, shown): &(Rect, f64)| r.2 - r.0 >= MIN_AREA && r.3 - r.1 >= MIN_AREA && shown < MAX_SHOWN;
-    for (r, _) in rects.into_iter().filter(worth) {
+    let rects: Vec<(Rect, f64)> = rects.into_iter().filter(worth).collect();
+    let cross = |a: Rect, b: Rect| a.0 < b.2 && b.0 < a.2 && a.1 < b.3 && b.1 < a.3;
+    let scrolls_inside = |m: Rect| rects.iter().any(|&(r, shown)| shown > 0.0 && cross(r, m));
+    for &(r, shown) in &rects {
+        if shown == MAIN && scrolls_inside(r) {
+            continue;
+        }
         if !kept.iter().any(|&k| same(k, r)) {
             kept.push(r);
         }
@@ -132,6 +141,22 @@ pub fn aim(rects: Vec<(Rect, f64)>, pointer: (i32, i32)) -> Option<(i32, i32)> {
     }
     let r = areas.iter().max_by_key(|r| (r.2 - r.0) * (r.3 - r.1))?;
     Some(((r.0 + r.2) / 2, (r.1 + r.3) / 2))
+}
+
+/// Where to put the pointer so the wheel scrolls `area` itself: its centre, unless an area nested in
+/// it (one of `all`) covers that, then the uncovered point nearest the centre.
+pub fn spot(area: Rect, all: &[Rect]) -> (i32, i32) {
+    let inner: Vec<Rect> = all.iter().copied().filter(|&r| r != area && area.0 <= r.0 && area.1 <= r.1 && area.2 >= r.2 && area.3 >= r.3).collect();
+    let (w, h) = (area.2 - area.0, area.3 - area.1);
+    let centre = (area.0 + w / 2, area.1 + h / 2);
+    let free = |&(x, y): &(i32, i32)| !inner.iter().any(|r| (r.0..r.2).contains(&x) && (r.1..r.3).contains(&y));
+    const STEPS: i32 = 20;
+    (1..STEPS)
+        .flat_map(|i| (1..STEPS).map(move |j| (area.0 + w * i / STEPS, area.1 + h * j / STEPS)))
+        .chain([centre])
+        .filter(free)
+        .min_by_key(|&(x, y)| (x - centre.0).pow(2) + (y - centre.1).pow(2))
+        .unwrap_or(centre)
 }
 
 pub fn labels(count: usize) -> Vec<String> {
@@ -189,6 +214,17 @@ mod tests {
         assert_eq!(got, vec![pane]);
     }
 
+
+    #[test]
+    fn the_pointer_for_a_scroll_area_avoids_the_areas_nested_in_it() {
+        // claude.ai: the artifact pane's centre sits on its table of contents.
+        let (artifact, toc, chat) = ((826, 128, 1905, 995), (935, 520, 1795, 995), (290, 85, 820, 995));
+        let (x, y) = spot(artifact, &[artifact, toc, chat]);
+        assert!((artifact.0..artifact.2).contains(&x) && (artifact.1..artifact.3).contains(&y));
+        assert!(!(toc.0..toc.2).contains(&x) || !(toc.1..toc.3).contains(&y), "({x}, {y}) is on the TOC");
+        assert_eq!(spot(toc, &[artifact, toc, chat]), (1365, 757));
+        assert_eq!(spot(chat, &[artifact, toc, chat]), (555, 540));
+    }
 
     #[test]
     fn the_wheel_aims_at_the_biggest_scroll_area_unless_the_pointer_is_on_one() {
@@ -320,6 +356,17 @@ mod tests {
         let panel = (500, 100, 780, 580);
         let got = areas(vec![(panel, 40.0), (page, 20.0), ((2, 1, 801, 600), 20.0), ((10, 10, 10, 50), 20.0)]);
         assert_eq!(got, vec![page, panel]);
+    }
+
+    #[test]
+    fn a_main_landmark_counts_only_where_nothing_inside_it_reports_scrolling() {
+        // ChatGPT: sidebar navigation and list, a main landmark, a 2x1 stub for the chat scroller.
+        let (nav, list, main, stub) = ((0, 173, 340, 1040), (0, 252, 340, 976), (340, 121, 1920, 1040), (746, 964, 748, 965));
+        let got = areas(vec![(nav, 0.0), (list, 75.0), (main, MAIN), (stub, 4.0)]);
+        assert_eq!(got, vec![main, nav, list]);
+        // GitHub: the page scrolls, so its main landmark is not a second choice.
+        let (page, main) = ((0, 75, 1905, 995), (0, 140, 1905, 995));
+        assert_eq!(areas(vec![(page, 60.0), (main, MAIN)]), vec![page]);
     }
 
     #[test]
