@@ -2,6 +2,18 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/).
 
+## [0.5.0] - 2026-11-08
+
+### Added
+
+- `window` action: chord moves and resizes windows itself, so `window.ahk` (AutoHotkey) is no longer needed. Every layout it had is in: halves that step to 2/3 and 1/3, maximize, center, padded focus, quarters, thirds, 25/50/25 columns, and left / right master. Windows land on the monitor they are on, with no gaps between them; padded gaps scale with the monitor's DPI.
+- `global.toml`: `/wp` padded focus, `/wu` `/wi` `/wm` `/w,` quarters, `/w4` `/w5` `/w6` columns, `/w[` `/w]` master layouts.
+
+### Changed
+
+- `/w` window chords run as soon as their last letter is typed. Tap it again for the next size (`/wh h h`: left 1/2, 2/3, 1/3), or tap another letter to switch layout (`/wh l`: right half). Holding the letter doesn't repeat. A layout steps on only while the window stays where it put it, so a window moved by hand starts over.
+- An existing chords folder is never overwritten: copy the `# Window layout` section of `chords\global.toml` in the release zip into your `%APPDATA%\chord\chords\global.toml`.
+
 ## [0.4.15] - 2026-11-07
 
 ### Fixed
