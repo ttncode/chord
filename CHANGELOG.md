@@ -2,6 +2,16 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/).
 
+## [0.5.1] - 2026-11-08
+
+### Added
+
+- `window = "previous-desktop"` / `"next-desktop"`: takes the window in front to the previous / next virtual desktop, and you along with it. Works on Windows 10 and 11 without Windows' internal desktop API, which changes with every build: the window hides for 0.3 s while the desktop switches.
+
+### Changed
+
+- `global.toml`: `/dh` / `/dl` now move the window in front to the previous / next desktop (tap again to keep going). Switching desktops stays on Windows' `Win+Ctrl+Left/Right`. To get them in an existing chords folder, replace your `/dh` and `/dl` lines with the ones in the new `global.toml`.
+
 ## [0.5.0] - 2026-11-08
 
 ### Added
