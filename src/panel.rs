@@ -680,6 +680,7 @@ fn tray_menu(hwnd: HWND) {
             }
             ID_UPDATE => crate::update::check_in_background(),
             ID_QUIT => {
+                crate::window::put_down();
                 remove_tray();
                 std::process::exit(0);
             }

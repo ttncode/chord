@@ -1,6 +1,6 @@
 //! Window focus, window layouts and mouse actions.
 
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicI32, Ordering};
@@ -276,18 +276,35 @@ fn movable_front() -> Option<HWND> {
     (!hwnd.is_invalid() && !shell).then_some(hwnd)
 }
 
-/// Takes the window in front to another virtual desktop: `switch` changes the desktop while the
-/// window is hidden, and Windows shows a window that reappears on the desktop in view. Windows'
-/// own move API refuses other apps' windows, and the internal one changes with every Windows build.
+/// The window being carried to another desktop, hidden, and when the desktop last switched.
+static CARRIED: Mutex<Option<(isize, Instant)>> = Mutex::new(None);
+/// How long a desktop switch takes to finish; a window shown sooner lands on the old desktop.
+const SWITCH_SETTLE: Duration = Duration::from_millis(300);
+
+/// Picks up the window in front (hides it) and runs `switch` to change the desktop. Windows shows a
+/// window that reappears on the desktop in view, so `put_down` drops it there; until then more
+/// switches carry it along without a flicker per step. Windows' own move API refuses other apps'
+/// windows, and the internal one changes with every Windows build.
 pub fn move_to_desktop(switch: impl FnOnce()) {
-    let Some(hwnd) = movable_front() else { return };
-    unsafe {
-        let _ = ShowWindow(hwnd, SW_HIDE);
-        switch();
-        // shortcut: fixed wait for the desktop switch to finish; if the window shows up on the old desktop, wait longer.
-        std::thread::sleep(Duration::from_millis(300));
-        let _ = ShowWindow(hwnd, SW_SHOW);
+    let mut carried = CARRIED.lock().unwrap_or_else(|e| e.into_inner());
+    if carried.is_none() {
+        let Some(hwnd) = movable_front() else { return };
+        let _ = unsafe { ShowWindow(hwnd, SW_HIDE) };
+        *carried = Some((hwnd.0 as isize, Instant::now()));
     }
+    switch();
+    if let Some((_, at)) = carried.as_mut() {
+        *at = Instant::now();
+    }
+}
+
+/// Shows the carried window on the desktop in view and brings it to the front. Must run whenever
+/// chord mode ends: until then the window is hidden, with no taskbar button.
+pub fn put_down() {
+    let Some((hwnd, at)) = CARRIED.lock().unwrap_or_else(|e| e.into_inner()).take() else { return };
+    std::thread::sleep(SWITCH_SETTLE.saturating_sub(at.elapsed()));
+    let hwnd = HWND(hwnd as *mut _);
+    let _ = unsafe { ShowWindow(hwnd, SW_SHOW) };
     bring_to_front(hwnd);
 }
 

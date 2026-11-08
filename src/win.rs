@@ -423,6 +423,7 @@ pub fn run(chords_dir: PathBuf) {
         match effect {
             Effect::KeyUp => {}
             Effect::Enter => {
+                window::put_down();
                 ran = None;
                 search = None;
                 buffer.clear();
@@ -496,6 +497,7 @@ pub fn run(chords_dir: PathBuf) {
                 show(&buffer);
             }
             Effect::Search(query) => {
+                window::put_down();
                 let Some(s) = &session else { continue };
                 let window = search.take().map_or_else(|| unsafe { GetForegroundWindow() }, |(_, _, w)| w);
                 let mut view = s.search_view(query.as_str(), None);
@@ -533,8 +535,10 @@ pub fn run(chords_dir: PathBuf) {
                 } else {
                     fire(&chords_dir, &chord);
                 }
+                window::put_down();
             }
             Effect::Cancel => {
+                window::put_down();
                 search = None;
                 panel::hide();
                 end_hints(&mut hints);
@@ -552,10 +556,13 @@ pub fn run(chords_dir: PathBuf) {
                         fire(&chords_dir, chord.as_str());
                     }
                 }
+                // Space is up: a window carried to another desktop lands there.
+                window::put_down();
             }
             Effect::ToggleCaps => send_combo(&CAPS),
             Effect::ResyncCapsLight => resync_caps_light(),
             Effect::Quit => {
+                window::put_down();
                 say!("\nemergency exit");
                 panel::remove_tray();
                 std::process::exit(0);
@@ -818,6 +825,7 @@ fn key_input(vk: u16, scan: u16, flags: KEYBD_EVENT_FLAGS) -> INPUT {
 /// ends even while the message waits for OK, then quit.
 fn stop_for_loop() -> ! {
     STOPPED.store(true, Ordering::SeqCst);
+    window::put_down();
     let (exe, _) = foreground();
     say!("\nstopped: feedback loop with {exe}");
     panel::remove_tray();
