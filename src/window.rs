@@ -18,7 +18,7 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{
 use windows::Win32::UI::WindowsAndMessaging::{
     EnumWindows, GW_OWNER, GetForegroundWindow, GetSystemMetrics, SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN,
     SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN, SetCursorPos, GetWindow, GetWindowTextLengthW, GetWindowThreadProcessId, IsIconic,
-    IsWindowVisible, SW_RESTORE, SetForegroundWindow, ShowWindow, GetClassNameW, GetWindowRect, IsZoomed, SW_MAXIMIZE,
+    IsWindowVisible, SW_RESTORE, SetForegroundWindow, ShowWindow, GetClassNameW, GetWindowRect, IsZoomed, SW_HIDE, SW_MAXIMIZE, SW_SHOW,
     SWP_NOACTIVATE, SWP_NOZORDER, SetWindowPos,
 };
 use windows::Win32::Foundation::E_FAIL;
@@ -246,11 +246,7 @@ static LAST_SNAP: Mutex<Option<(isize, Layout, usize, layout::Rect)>> = Mutex::n
 
 /// Moves the window in front to `layout` on the monitor it is on.
 pub fn snap(layout: Layout) {
-    let hwnd = unsafe { GetForegroundWindow() };
-    // The desktop and the taskbar are windows too; moving them breaks the shell until sign-out.
-    if hwnd.is_invalid() || matches!(foreground_class().as_str(), "Progman" | "WorkerW" | "Shell_TrayWnd" | "Shell_SecondaryTrayWnd") {
-        return;
-    }
+    let Some(hwnd) = movable_front() else { return };
     unsafe {
         if layout == Layout::Maximize {
             let _ = ShowWindow(hwnd, if IsZoomed(hwnd).as_bool() { SW_RESTORE } else { SW_MAXIMIZE });
@@ -270,6 +266,29 @@ pub fn snap(layout: Layout) {
         move_visible(hwnd, target);
         *last = Some((hwnd.0 as isize, layout, index, outer_rect(hwnd)));
     }
+}
+
+/// The window in front, unless it is the desktop or the taskbar: those are windows too, and moving
+/// or hiding them breaks the shell until sign-out.
+fn movable_front() -> Option<HWND> {
+    let hwnd = unsafe { GetForegroundWindow() };
+    let shell = matches!(foreground_class().as_str(), "Progman" | "WorkerW" | "Shell_TrayWnd" | "Shell_SecondaryTrayWnd");
+    (!hwnd.is_invalid() && !shell).then_some(hwnd)
+}
+
+/// Takes the window in front to another virtual desktop: `switch` changes the desktop while the
+/// window is hidden, and Windows shows a window that reappears on the desktop in view. Windows'
+/// own move API refuses other apps' windows, and the internal one changes with every Windows build.
+pub fn move_to_desktop(switch: impl FnOnce()) {
+    let Some(hwnd) = movable_front() else { return };
+    unsafe {
+        let _ = ShowWindow(hwnd, SW_HIDE);
+        switch();
+        // shortcut: fixed wait for the desktop switch to finish; if the window shows up on the old desktop, wait longer.
+        std::thread::sleep(Duration::from_millis(300));
+        let _ = ShowWindow(hwnd, SW_SHOW);
+    }
+    bring_to_front(hwnd);
 }
 
 fn outer_rect(hwnd: HWND) -> layout::Rect {

@@ -44,6 +44,7 @@ use windows::core::{HSTRING, PWSTR, w};
 use crate::config::{self, Action, Hint, Mouse};
 use crate::{hints, uia};
 use crate::panel;
+use crate::layout::Layout;
 use crate::window;
 use crate::keys::{Key, parse_shortcut};
 use crate::machine::{Effect, Machine, STORM_MAX, STORM_WINDOW_MS, Storm, VK_CAPITAL, VK_SPACE, repeat_candidate, step, glide_direction, glide_speed};
@@ -449,9 +450,9 @@ pub fn run(chords_dir: PathBuf) {
                 if let Some(action) = s.repeat_action(&candidate).filter(|_| typed_letter) {
                     panel::hide();
                     // Tap only: a held key would flicker the window through every frame of its layout.
-                    if let Action::Window(layout) = action {
+                    if matches!(action, Action::Window(_)) {
                         say!("  -> {candidate}");
-                        window::snap(layout);
+                        without_shift(|| run_action(&action));
                     } else {
                         held = Some(Held::start(&candidate, action));
                     }
@@ -656,6 +657,10 @@ fn run_action(action: &Action) {
                 aim_wheel();
             }
             window::mouse(*action)
+        }
+        Action::Window(layout @ (Layout::PreviousDesktop | Layout::NextDesktop)) => {
+            let keys = if *layout == Layout::NextDesktop { "win+ctrl+right" } else { "win+ctrl+left" };
+            window::move_to_desktop(|| send_combo(&parse_shortcut(keys).expect("built-in shortcut").remove(0)));
         }
         Action::Window(layout) => window::snap(*layout),
         // Hint chords never get here: `run` handles them while typing.

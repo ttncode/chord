@@ -53,8 +53,9 @@ name = "Global"
 "/wq" = { name = "Window: close", shortcut = "alt+f4" }
 
 # Virtual desktops
-"/dh" = { name = "Desktop: previous", shortcut = "win+ctrl+left", repeat = true }
-"/dl" = { name = "Desktop: next", shortcut = "win+ctrl+right", repeat = true }
+# Win+Ctrl+Left/Right switch desktops; these take the window in front along (tap again to keep going).
+"/dh" = { name = "Desktop: move window to previous", window = "previous-desktop", repeat = true }
+"/dl" = { name = "Desktop: move window to next", window = "next-desktop", repeat = true }
 "/dn" = { name = "Desktop: new", shortcut = "win+ctrl+d" }
 "/dx" = { name = "Desktop: close", shortcut = "win+ctrl+f4" }
 
