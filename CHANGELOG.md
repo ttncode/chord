@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/).
 
+## [0.5.2] - 2026-11-08
+
+### Changed
+
+- `/dh h h` carries the window across several desktops without a flicker or a 0.3 s stop at each one: it stays hidden while you tap and shows up on the last desktop when you release Space.
+
 ## [0.5.1] - 2026-11-08
 
 ### Added
