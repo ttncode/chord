@@ -12,7 +12,7 @@ Keyboard chords for Windows: hold Caps Lock + Space, type letters, release Space
 
 | Task | Command | Evidence |
 | --- | --- | --- |
-| Test (all) | `cargo test` | executed: 125 tests pass |
+| Test (all) | `cargo test` | executed: 130 tests pass |
 | Test (single) | `cargo test <name>`, e.g. `cargo test hint_prefix` | executed |
 | Check the Windows build from Linux/WSL | `cargo check --target x86_64-pc-windows-gnu` | executed |
 | Run | `cargo run --release` | executed on Windows by the maintainer |
@@ -32,11 +32,12 @@ Three threads: the **hook thread** runs the low-level keyboard hook and the pure
 | `keys.rs` | shortcut text → virtual-key combos | yes |
 | `hints.rs` | label strings, which elements get a label | yes |
 | `style.rs` | colours, sizes, easing (pure) | yes |
+| `layout.rs` | `window` chord layouts: frames, placement, stepping on repeat (pure) | yes |
 | `update.rs` | tray "Check for updates": release parsing and version compare (pure), download and silent install | parsing yes |
 | `win.rs` | hook, effect loop, actions | no (`cfg(windows)`) |
 | `panel.rs`, `canvas.rs` | layered panel, overlay, tray; per-pixel-alpha drawing | no |
 | `uia.rs` | UI Automation scan for clickable elements | no |
-| `window.rs`, `autostart.rs` | window focus, mouse input; Start with Windows | no |
+| `window.rs`, `autostart.rs` | window focus, window moves, mouse input; Start with Windows | no |
 
 ## Conventions
 

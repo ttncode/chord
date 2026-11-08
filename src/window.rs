@@ -1,11 +1,14 @@
-//! Window focus and mouse actions.
+//! Window focus, window layouts and mouse actions.
 
 use std::time::Duration;
 
+use std::sync::Mutex;
 use std::sync::atomic::{AtomicI32, Ordering};
 
-use windows::Win32::Foundation::{BOOL, HWND, LPARAM};
-use windows::Win32::Graphics::Dwm::{DWMWA_CLOAKED, DwmGetWindowAttribute};
+use windows::Win32::Foundation::{BOOL, HWND, LPARAM, RECT};
+use windows::Win32::Graphics::Gdi::{GetMonitorInfoW, MONITOR_DEFAULTTONEAREST, MONITORINFO, MonitorFromWindow};
+use windows::Win32::UI::HiDpi::GetDpiForWindow;
+use windows::Win32::Graphics::Dwm::{DWMWA_CLOAKED, DWMWA_EXTENDED_FRAME_BOUNDS, DwmGetWindowAttribute};
 use windows::Win32::UI::Input::KeyboardAndMouse::{
     INPUT, INPUT_0, INPUT_MOUSE, MOUSE_EVENT_FLAGS, MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP,
     MOUSEEVENTF_ABSOLUTE, MOUSEEVENTF_MIDDLEDOWN, MOUSEEVENTF_MIDDLEUP, MOUSEEVENTF_MOVE, MOUSEEVENTF_VIRTUALDESK, MOUSEEVENTF_RIGHTDOWN,
@@ -15,7 +18,8 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{
 use windows::Win32::UI::WindowsAndMessaging::{
     EnumWindows, GW_OWNER, GetForegroundWindow, GetSystemMetrics, SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN,
     SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN, SetCursorPos, GetWindow, GetWindowTextLengthW, GetWindowThreadProcessId, IsIconic,
-    IsWindowVisible, SW_RESTORE, SetForegroundWindow, ShowWindow, GetClassNameW,
+    IsWindowVisible, SW_RESTORE, SetForegroundWindow, ShowWindow, GetClassNameW, GetWindowRect, IsZoomed, SW_MAXIMIZE,
+    SWP_NOACTIVATE, SWP_NOZORDER, SetWindowPos,
 };
 use windows::Win32::Foundation::E_FAIL;
 use windows::Win32::System::Com::{
@@ -25,6 +29,7 @@ use windows::Win32::System::Ole::GetActiveObject;
 use windows::core::{GUID, Interface, PCWSTR, VARIANT, w};
 
 use crate::config::Mouse;
+use crate::layout::{self, Layout};
 
 const WHEEL_STEP: i32 = 120;
 const XBUTTON1: i32 = 1;
@@ -233,4 +238,65 @@ pub fn send_mouse(events: &[MOUSE_EVENT_FLAGS], wheel: i32) {
         })
         .collect();
     unsafe { SendInput(&inputs, size_of::<INPUT>() as i32) };
+}
+
+/// (window, layout, frame index, where the window ended up) of the last `snap`, so running the same
+/// layout again on that window steps to its next frame.
+static LAST_SNAP: Mutex<Option<(isize, Layout, usize, layout::Rect)>> = Mutex::new(None);
+
+/// Moves the window in front to `layout` on the monitor it is on.
+pub fn snap(layout: Layout) {
+    let hwnd = unsafe { GetForegroundWindow() };
+    // The desktop and the taskbar are windows too; moving them breaks the shell until sign-out.
+    if hwnd.is_invalid() || matches!(foreground_class().as_str(), "Progman" | "WorkerW" | "Shell_TrayWnd" | "Shell_SecondaryTrayWnd") {
+        return;
+    }
+    unsafe {
+        if layout == Layout::Maximize {
+            let _ = ShowWindow(hwnd, if IsZoomed(hwnd).as_bool() { SW_RESTORE } else { SW_MAXIMIZE });
+            return;
+        }
+        let monitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+        let mut info = MONITORINFO { cbSize: size_of::<MONITORINFO>() as u32, ..Default::default() };
+        if !GetMonitorInfoW(monitor, &mut info).as_bool() {
+            return;
+        }
+        let w = info.rcWork;
+        let work = layout::Rect { left: w.left, top: w.top, right: w.right, bottom: w.bottom };
+        let mut last = LAST_SNAP.lock().unwrap_or_else(|e| e.into_inner());
+        let previous = last.filter(|(h, ..)| *h == hwnd.0 as isize).map(|(_, l, i, at)| (l, i, at));
+        let index = layout::next_frame(layout, previous, outer_rect(hwnd));
+        let target = layout::place(layout.frames()[index], work, GetDpiForWindow(hwnd).max(96) as i32);
+        move_visible(hwnd, target);
+        *last = Some((hwnd.0 as isize, layout, index, outer_rect(hwnd)));
+    }
+}
+
+fn outer_rect(hwnd: HWND) -> layout::Rect {
+    let mut r = RECT::default();
+    let _ = unsafe { GetWindowRect(hwnd, &mut r) };
+    layout::Rect { left: r.left, top: r.top, right: r.right, bottom: r.bottom }
+}
+
+/// Windows 10/11 windows carry invisible resize borders (~7px left, right, bottom): placing the outer
+/// rectangle leaves gaps between snapped windows, so this places the visible frame on `to` instead.
+unsafe fn move_visible(hwnd: HWND, to: layout::Rect) {
+    let flags = SWP_NOZORDER | SWP_NOACTIVATE;
+    unsafe {
+        if IsZoomed(hwnd).as_bool() || IsIconic(hwnd).as_bool() {
+            let _ = ShowWindow(hwnd, SW_RESTORE);
+        }
+        let _ = SetWindowPos(hwnd, HWND::default(), to.left, to.top, to.right - to.left, to.bottom - to.top, flags);
+        let mut visible = RECT::default();
+        if DwmGetWindowAttribute(hwnd, DWMWA_EXTENDED_FRAME_BOUNDS, &mut visible as *mut _ as *mut _, size_of::<RECT>() as u32).is_err() {
+            return;
+        }
+        let outer = outer_rect(hwnd);
+        let (l, t) = (visible.left - outer.left, visible.top - outer.top);
+        let (r, b) = (outer.right - visible.right, outer.bottom - visible.bottom);
+        if l != 0 || t != 0 || r != 0 || b != 0 {
+            let (x, y) = (to.left - l, to.top - t);
+            let _ = SetWindowPos(hwnd, HWND::default(), x, y, to.right + r - x, to.bottom + b - y, flags);
+        }
+    }
 }

@@ -17,6 +17,7 @@ mod canvas;
 mod config;
 mod hints;
 mod keys;
+mod layout;
 mod machine;
 mod style;
 mod update;

@@ -28,17 +28,28 @@ name = "Global"
 "/w" = { name = "Word", focus = "winword.exe", launch = "start winword" }
 "/e" = { name = "File Explorer (new window)", shortcut = "win+e" }
 
-# Window layout: these send the Win+Alt hotkeys of window.ahk (AutoHotkey must be running)
-"/wh" = { name = "Window: left (repeat: 1/2, 2/3, 1/3)", shortcut = "win+alt+left" }
-"/wl" = { name = "Window: right (repeat: 1/2, 2/3, 1/3)", shortcut = "win+alt+right" }
-"/wk" = { name = "Window: top (repeat: 1/2, 2/3, 1/3)", shortcut = "win+alt+up" }
-"/wj" = { name = "Window: bottom (repeat: 1/2, 2/3, 1/3)", shortcut = "win+alt+down" }
-"/wf" = { name = "Window: maximize", shortcut = "win+alt+enter" }
-"/wc" = { name = "Window: center", shortcut = "win+alt+c" }
-"/w1" = { name = "Window: left third", shortcut = "win+alt+1" }
-"/w2" = { name = "Window: middle third", shortcut = "win+alt+2" }
-"/w3" = { name = "Window: right third", shortcut = "win+alt+3" }
-"/wn" = { name = "Window: restore / minimize", shortcut = "win+down" }
+# Window layout on the monitor the window is on. Tap the last letter again for the next size
+# (/wh h h: left 1/2, 2/3, 1/3), or another letter to switch layout (/wh l: right half).
+"/wh" = { name = "Window: left (again: 2/3, 1/3)", window = "left", repeat = true }
+"/wl" = { name = "Window: right (again: 2/3, 1/3)", window = "right", repeat = true }
+"/wk" = { name = "Window: top (again: 2/3, 1/3)", window = "top", repeat = true }
+"/wj" = { name = "Window: bottom (again: 2/3, 1/3)", window = "bottom", repeat = true }
+"/wf" = { name = "Window: maximize / restore", window = "maximize", repeat = true }
+"/wc" = { name = "Window: center", window = "center", repeat = true }
+"/wp" = { name = "Window: padded focus", window = "padded", repeat = true }
+"/wu" = { name = "Window: top-left quarter", window = "top-left", repeat = true }
+"/wi" = { name = "Window: top-right quarter", window = "top-right", repeat = true }
+"/wm" = { name = "Window: bottom-left quarter", window = "bottom-left", repeat = true }
+"/w," = { name = "Window: bottom-right quarter", window = "bottom-right", repeat = true }
+"/w1" = { name = "Window: left third", window = "left-third", repeat = true }
+"/w2" = { name = "Window: middle third", window = "middle-third", repeat = true }
+"/w3" = { name = "Window: right third", window = "right-third", repeat = true }
+"/w4" = { name = "Window: left quarter column", window = "narrow-left", repeat = true }
+"/w5" = { name = "Window: center half column", window = "wide-center", repeat = true }
+"/w6" = { name = "Window: right quarter column", window = "narrow-right", repeat = true }
+"/w[" = { name = "Window: left master (again: 1/4 middle, 1/4 right)", window = "left-master", repeat = true }
+"/w]" = { name = "Window: right master (again: 1/4 middle, 1/4 left)", window = "right-master", repeat = true }
+"/wn" = { name = "Window: restore / minimize", shortcut = "win+down", repeat = true }
 "/wq" = { name = "Window: close", shortcut = "alt+f4" }
 
 # Virtual desktops

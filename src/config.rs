@@ -3,6 +3,7 @@
 use std::collections::BTreeMap;
 
 use crate::keys::{Combo, parse_shortcut};
+use crate::layout::{self, Layout};
 use crate::machine::CHORD_CHARS;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -15,6 +16,8 @@ pub enum Action {
     Mouse(Mouse),
     /// Label the clickable elements in the window; the letters typed after the chord pick one.
     Hints(Hint),
+    /// Moves and resizes the window in front.
+    Window(Layout),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -377,6 +380,9 @@ fn parse_chord(key: &str, value: &toml::Value) -> Result<(Chord, Option<regex::R
                 };
                 actions.push(Action::Hints(Hint { click, taskbar: false }));
             }
+            "window" => actions.push(Action::Window(
+                Layout::parse(s).ok_or_else(|| format!("window \"{s}\" must be {}", layout::NAMES))?,
+            )),
             "mouse" => actions.push(Action::Mouse(match s.as_str() {
                 "click" => Mouse::Click,
                 "right-click" => Mouse::RightClick,
@@ -411,7 +417,7 @@ fn parse_chord(key: &str, value: &toml::Value) -> Result<(Chord, Option<regex::R
     }
     match <[Action; 1]>::try_from(actions) {
         Ok([action]) => Ok((Chord { name, action, repeat }, pattern)),
-        Err(_) => Err("needs exactly one of 'shortcut', 'shell', 'palette', 'focus', 'mouse', 'hints'".into()),
+        Err(_) => Err("needs exactly one of 'shortcut', 'shell', 'palette', 'focus', 'mouse', 'hints', 'window'".into()),
     }
 }
 
@@ -699,6 +705,14 @@ mod tests {
         assert_eq!(f.chords["["].action, Action::Hints(Hint { click: Mouse::MiddleClick, taskbar: false }));
         let f = global(r#""/ms" = { name = "Scroll area", hints = "scroll" }"#);
         assert_eq!(f.chords["/ms"].action, Action::Hints(Hint { click: Mouse::Point, taskbar: false }));
+    }
+
+    #[test]
+    fn window_parses_and_rejects_unknown_layouts() {
+        let f = global(r#""/wh" = { name = "Left", window = "left" }"#);
+        assert_eq!(f.chords["/wh"].action, Action::Window(Layout::Left));
+        let (_, errors) = parse_file("g.toml", "name = \"G\"\n[chords]\n\"/w\" = { name = \"x\", window = \"middle\" }\n");
+        assert!(errors[0].starts_with("g.toml: chord '/w': window \"middle\" must be left, right,"), "{errors:?}");
     }
 
     #[test]

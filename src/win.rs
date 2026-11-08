@@ -448,7 +448,13 @@ pub fn run(chords_dir: PathBuf) {
                 let candidate = repeat_candidate(ran.as_ref().map(|(t, c)| (t.as_str(), c.as_str())), &buffer);
                 if let Some(action) = s.repeat_action(&candidate).filter(|_| typed_letter) {
                     panel::hide();
-                    held = Some(Held::start(&candidate, action));
+                    // Tap only: a held key would flicker the window through every frame of its layout.
+                    if let Action::Window(layout) = action {
+                        say!("  -> {candidate}");
+                        window::snap(layout);
+                    } else {
+                        held = Some(Held::start(&candidate, action));
+                    }
                     ran = Some((buffer.clone(), candidate));
                     continue;
                 }
@@ -651,6 +657,7 @@ fn run_action(action: &Action) {
             }
             window::mouse(*action)
         }
+        Action::Window(layout) => window::snap(*layout),
         // Hint chords never get here: `run` handles them while typing.
         Action::Hints(_) => {}
     }
