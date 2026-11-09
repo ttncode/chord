@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/).
 
+## [0.5.4] - 2026-11-09
+
+### Changed
+
+- `/mc` clicks as soon as you type `c`, and each further tap of `c` clicks again: `/mc c c` clicks three times, and tapped quickly it is a triple-click. Holding the letter doesn't keep clicking. To get this in an existing chords folder, add `repeat = true` to your `/mc` line in `global.toml`.
+
 ## [0.5.3] - 2026-11-09
 
 ### Added
