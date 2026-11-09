@@ -19,13 +19,15 @@ name = "Global"
 "/f" = { name = "Firefox", focus = "firefox.exe", launch = "start firefox" }
 "/p" = { name = "Postman", focus = "postman.exe", launch = 'start "" "%LOCALAPPDATA%\Postman\Postman.exe"' }
 "/b" = { name = "Bruno", focus = "bruno.exe", launch = 'start "" "%LOCALAPPDATA%\Programs\Bruno\Bruno.exe"' }
-"/q" = { name = "DBX (database)", focus = "dbx.exe", launch = 'start "" "%LOCALAPPDATA%\DBX\dbx.exe"' }
-"/k" = { name = "Mattermost", focus = "mattermost.exe", launch = 'start "" "%ProgramFiles%\mattermost-desktop\Mattermost.exe"' }
+"/dbx" = { name = "DBX (database)", focus = "dbx.exe", launch = 'start "" "%LOCALAPPDATA%\DBX\dbx.exe"' }
+"/m" = { name = "Mattermost", focus = "mattermost.exe", launch = 'start "" "%ProgramFiles%\mattermost-desktop\Mattermost.exe"' }
 "/o" = { name = "Outlook", focus = "outlook.exe", launch = "start outlook" }
 "/g" = { name = "Everything (find files)", focus = "everything.exe", launch = 'start "" "%ProgramFiles(x86)%\Everything\Everything.exe"' }
 "/=" = { name = "Notepad++", focus = "notepad++.exe", launch = "start notepad++" }
 "/x" = { name = "Excel", focus = "excel.exe", launch = "start excel" }
 "/w" = { name = "Word", focus = "winword.exe", launch = "start winword" }
+"/n" = { name = "Notelet", focus = "notelet.exe", launch = 'start "" "%LOCALAPPDATA%\Notelet\notelet.exe"' }
+"/ft" = { name = "Boost Focus Timer", focus = "boost-focus-timer.exe", launch = 'start "" "%LOCALAPPDATA%\Boost Focus Timer\boost-focus-timer.exe"' }
 "/e" = { name = "File Explorer (new window)", shortcut = "win+e" }
 
 # Window layout on the monitor the window is on. Tap the last letter again for the next size
