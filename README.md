@@ -60,7 +60,7 @@ ca = { name = "Collapse folders", palette = "Collapse Folders in Explorer" }
 "/t" = { name = "Open Windows Terminal", shell = "wt" }
 ```
 
-Each chord has a `name` and exactly one action. Add `repeat = true` to run it as soon as its last letter is pressed and keep running it while that letter is held (scrolling glides in small steps; other actions repeat 10 times a second); tapping its last letter again runs it again, and tapping another letter swaps the last letter (`/vk` then `j` runs `/vj`); releasing Space afterwards doesn't run it again. `window` chords with `repeat = true` run once per tap: holding the letter doesn't run them again.
+Each chord has a `name` and exactly one action. Add `repeat = true` to run it as soon as its last letter is pressed and keep running it while that letter is held (scrolling glides in small steps; other actions repeat 10 times a second); tapping its last letter again runs it again, and tapping another letter swaps the last letter (`/vk` then `j` runs `/vj`); releasing Space afterwards doesn't run it again. `window` and click chords with `repeat = true` run once per tap: holding the letter doesn't run them again. `/mc c c` clicks three times; tap quickly for a triple-click, which selects a paragraph in most apps.
 
 | Action | What it does | Example |
 |---|---|---|
