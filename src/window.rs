@@ -18,7 +18,7 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{
 use windows::Win32::UI::WindowsAndMessaging::{
     EnumWindows, GW_OWNER, GetForegroundWindow, GetSystemMetrics, SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN,
     SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN, SetCursorPos, GetWindow, GetWindowTextLengthW, GetWindowThreadProcessId, IsIconic,
-    IsWindowVisible, SW_RESTORE, SetForegroundWindow, ShowWindow, GetClassNameW, GetWindowRect, IsZoomed, SW_HIDE, SW_MAXIMIZE, SW_SHOW,
+    IsWindowVisible, SW_RESTORE, SetForegroundWindow, ShowWindow, GetClassNameW, GetWindowLongW, GetWindowRect, GWL_EXSTYLE, IsZoomed, WS_EX_TOOLWINDOW, SW_HIDE, SW_MAXIMIZE, SW_SHOW,
     SWP_NOACTIVATE, SWP_NOZORDER, SetWindowPos,
 };
 use windows::Win32::Foundation::E_FAIL;
@@ -75,6 +75,10 @@ fn is_switchable(hwnd: HWND) -> bool {
             return false;
         }
         if GetWindow(hwnd, GW_OWNER).is_ok_and(|owner| !owner.is_invalid()) {
+            return false;
+        }
+        // Tauri's single-instance helper is a visible, titled tool window: focusing it does nothing and skips `launch`.
+        if GetWindowLongW(hwnd, GWL_EXSTYLE) as u32 & WS_EX_TOOLWINDOW.0 != 0 {
             return false;
         }
         // UWP and other-desktop windows stay "visible" while cloaked.
