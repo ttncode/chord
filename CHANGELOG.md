@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/).
 
+## [0.5.6] - 2026-11-09
+
+### Fixed
+
+- `focus` chords open apps minimized to the tray, such as Notelet and Boost Focus Timer. Chord took a Tauri app's invisible single-instance helper window for its main window, so nothing appeared and `launch` never ran.
+
 ## [0.5.5] - 2026-11-09
 
 ### Added
