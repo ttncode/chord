@@ -32,6 +32,7 @@ pub enum Mouse {
     Click,
     RightClick,
     DoubleClick,
+    TripleClick,
     MiddleClick,
     ScrollUp,
     ScrollDown,
@@ -387,6 +388,7 @@ fn parse_chord(key: &str, value: &toml::Value) -> Result<(Chord, Option<regex::R
                 "click" => Mouse::Click,
                 "right-click" => Mouse::RightClick,
                 "double-click" => Mouse::DoubleClick,
+                "triple-click" => Mouse::TripleClick,
                 "middle-click" => Mouse::MiddleClick,
                 "scroll-up" => Mouse::ScrollUp,
                 "scroll-down" => Mouse::ScrollDown,
@@ -395,7 +397,7 @@ fn parse_chord(key: &str, value: &toml::Value) -> Result<(Chord, Option<regex::R
                 "back" => Mouse::Back,
                 "forward" => Mouse::Forward,
                 other => return Err(format!(
-                    "mouse \"{other}\" must be click, right-click, double-click, middle-click, scroll-up, scroll-down, scroll-left, scroll-right, back or forward"
+                    "mouse \"{other}\" must be click, right-click, double-click, triple-click, middle-click, scroll-up, scroll-down, scroll-left, scroll-right, back or forward"
                 )),
             })),
             other => return Err(format!("unknown field '{other}'")),
@@ -705,6 +707,12 @@ mod tests {
         assert_eq!(f.chords["["].action, Action::Hints(Hint { click: Mouse::MiddleClick, taskbar: false }));
         let f = global(r#""/ms" = { name = "Scroll area", hints = "scroll" }"#);
         assert_eq!(f.chords["/ms"].action, Action::Hints(Hint { click: Mouse::Point, taskbar: false }));
+    }
+
+    #[test]
+    fn triple_click_parses() {
+        let f = global(r#""/m3" = { name = "Triple", mouse = "triple-click" }"#);
+        assert_eq!(f.chords["/m3"].action, Action::Mouse(Mouse::TripleClick));
     }
 
     #[test]

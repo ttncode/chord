@@ -87,9 +87,10 @@ name = "Global"
 "/vh" = { name = "Previous track", shortcut = "prevtrack" }
 
 # Mouse at the pointer (Vim directions for scrolling)
-"/mc" = { name = "Mouse: click (tap c again to click again)", mouse = "click", repeat = true }
+"/mc" = { name = "Mouse: click", mouse = "click" }
 "/mr" = { name = "Mouse: right-click", mouse = "right-click" }
 "/md" = { name = "Mouse: double-click", mouse = "double-click" }
+"/m3" = { name = "Mouse: triple-click", mouse = "triple-click" }
 "/mm" = { name = "Mouse: middle-click", mouse = "middle-click" }
 "/mj" = { name = "Mouse: scroll down", mouse = "scroll-down", repeat = true }
 "/mk" = { name = "Mouse: scroll up", mouse = "scroll-up", repeat = true }

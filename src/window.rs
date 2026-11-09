@@ -111,6 +111,10 @@ pub fn mouse(action: Mouse) {
             &[MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP, MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP],
             0,
         ),
+        Mouse::TripleClick => send_mouse(
+            &[MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP, MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP, MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP],
+            0,
+        ),
         Mouse::ScrollUp | Mouse::ScrollDown | Mouse::ScrollLeft | Mouse::ScrollRight => {
             scroll(action, 3 * WHEEL_STEP);
         }

@@ -450,8 +450,8 @@ pub fn run(chords_dir: PathBuf) {
                 let candidate = repeat_candidate(ran.as_ref().map(|(t, c)| (t.as_str(), c.as_str())), &buffer);
                 if let Some(action) = s.repeat_action(&candidate).filter(|_| typed_letter) {
                     panel::hide();
-                    // Tap only: a held key would flicker the window through its layouts, or click 10 times a second.
-                    if matches!(action, Action::Window(_) | Action::Mouse(Mouse::Click | Mouse::RightClick | Mouse::DoubleClick | Mouse::MiddleClick)) {
+                    // Tap only: a held key would flicker the window through every frame of its layout.
+                    if matches!(action, Action::Window(_)) {
                         say!("  -> {candidate}");
                         without_shift(|| run_action(&action));
                     } else {
