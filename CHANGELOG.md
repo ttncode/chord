@@ -2,6 +2,16 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/).
 
+## [0.5.5] - 2026-11-09
+
+### Added
+
+- `mouse = "triple-click"` and the `/m3` chord: three quick clicks at the pointer, which select a paragraph or line in most apps. To get `/m3` in an existing chords folder, add this line to your `global.toml`: `"/m3" = { name = "Mouse: triple-click", mouse = "triple-click" }`.
+
+### Removed
+
+- The tap-to-click-again `/mc` from 0.5.4. `/mc` is one click when you release Space. If you added `repeat = true` to your `/mc` line, remove it.
+
 ## [0.5.4] - 2026-11-09
 
 ### Changed
