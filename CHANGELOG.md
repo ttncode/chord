@@ -2,6 +2,16 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/).
 
+## [0.5.3] - 2026-11-09
+
+### Added
+
+- `global.toml`: `/n` Notelet and `/ft` Boost Focus Timer.
+
+### Changed
+
+- `global.toml`: Mattermost moves from `/k` to `/m`, and DBX from `/q` to `/dbx`. An existing chords folder is never overwritten: make these changes in your own `global.toml`.
+
 ## [0.5.2] - 2026-11-08
 
 ### Changed
