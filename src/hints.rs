@@ -13,6 +13,9 @@ const MAX_LABELS: usize = 300;
 /// Element rectangles closer than this (pixels) on every edge are the same target.
 const SAME: i32 = 6;
 
+/// Elements thinner than this (pixels) are resize bars (Electron's sashes), not things to click.
+const MIN_SIDE: i32 = 6;
+
 /// An item row is cut to this many times its height from its left edge before its middle is clicked.
 const ITEM_WIDTH_PER_HEIGHT: i32 = 4;
 
@@ -50,7 +53,7 @@ pub fn targets(elements: Vec<(Rect, Kind)>) -> Vec<Rect> {
         (a.0 - b.0).abs() <= SAME && (a.1 - b.1).abs() <= SAME && (a.2 - b.2).abs() <= SAME && (a.3 - b.3).abs() <= SAME
     };
     let contains = |a: Rect, b: Rect| a.0 <= b.0 && a.1 <= b.1 && a.2 >= b.2 && a.3 >= b.3 && !same(a, b);
-    let elements: Vec<(Rect, Kind)> = elements.into_iter().filter(|(r, _)| r.2 > r.0 && r.3 > r.1).collect();
+    let elements: Vec<(Rect, Kind)> = elements.into_iter().filter(|(r, _)| r.2 - r.0 >= MIN_SIDE && r.3 - r.1 >= MIN_SIDE).collect();
     let in_scroll_bar = |r: Rect| elements.iter().any(|&(bar, k)| k == Kind::ScrollBar && (same(bar, r) || contains(bar, r)));
     let elements: Vec<(Rect, Kind)> = elements.iter().copied().filter(|&(r, _)| !in_scroll_bar(r)).collect();
     let mut kept: Vec<Rect> = Vec::new();
@@ -214,6 +217,12 @@ mod tests {
         assert_eq!(got, vec![pane]);
     }
 
+    #[test]
+    fn resize_bars_get_no_label_and_do_not_take_the_first_tabs() {
+        // Antigravity: the sash left of the editor starts 2 px before the first tab.
+        let (sash, tab) = ((356, 85, 360, 1008), (358, 85, 603, 115));
+        assert_eq!(targets(vec![generic(sash), control(tab), generic((358, 1006, 1890, 1010))]), vec![tab]);
+    }
 
     #[test]
     fn the_pointer_for_a_scroll_area_avoids_the_areas_nested_in_it() {
