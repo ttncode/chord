@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/).
 
+## [0.5.7] - 2026-11-10
+
+### Fixed
+
+- `/ms` labels Mattermost's thread panel. Mattermost reports none of its panels as scrollable, and chord only took the main and navigation regions of a page, so only the centre column got a label. Large side panels of other web apps may now get a label too.
+
 ## [0.5.6] - 2026-11-09
 
 ### Fixed
