@@ -370,6 +370,13 @@ mod tests {
     }
 
     #[test]
+    fn landmarks_side_by_side_each_get_a_label() {
+        // Mattermost: no scroll patterns; the channel (main) and the thread panel (custom) both scroll.
+        let (header, channel, thread) = ((618, 225, 1187, 281), (618, 281, 1187, 809), (1187, 225, 1587, 931));
+        assert_eq!(areas(vec![(header, MAIN), (channel, MAIN), (thread, MAIN)]), vec![thread, channel]);
+    }
+
+    #[test]
     fn small_areas_and_areas_with_almost_nothing_hidden_get_no_label() {
         let prompt_box = (700, 900, 1500, 960);
         let table = (700, 800, 1500, 1000);

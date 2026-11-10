@@ -10,7 +10,7 @@ use windows::Win32::UI::Accessibility::{
     UIA_IsKeyboardFocusablePropertyId, UIA_IsOffscreenPropertyId, UIA_IsSelectionItemPatternAvailablePropertyId,
     UIA_IsDialogPropertyId, UIA_IsTogglePatternAvailablePropertyId, UIA_IsScrollPatternAvailablePropertyId,
     UIA_ScrollVerticallyScrollablePropertyId, UIA_ScrollHorizontallyScrollablePropertyId, UIA_ScrollVerticalViewSizePropertyId, UIA_ScrollHorizontalViewSizePropertyId,
-    UIA_LandmarkTypePropertyId, UIA_MainLandmarkTypeId, UIA_NavigationLandmarkTypeId, UIA_PROPERTY_ID, UIA_CONTROLTYPE_ID,
+    UIA_LandmarkTypePropertyId, UIA_CustomLandmarkTypeId, UIA_MainLandmarkTypeId, UIA_NavigationLandmarkTypeId, UIA_PROPERTY_ID, UIA_CONTROLTYPE_ID,
     UIA_ButtonControlTypeId, UIA_SplitButtonControlTypeId, UIA_HyperlinkControlTypeId, UIA_MenuItemControlTypeId,
     UIA_TabItemControlTypeId, UIA_ListItemControlTypeId, UIA_TreeItemControlTypeId, UIA_DataItemControlTypeId,
     UIA_CheckBoxControlTypeId, UIA_RadioButtonControlTypeId, UIA_ComboBoxControlTypeId, UIA_EditControlTypeId,
@@ -237,7 +237,8 @@ pub fn clickable_rects(hwnd: HWND) -> Result<Vec<(Rect, Kind)>> {
 /// covers at their centre, plus navigation landmarks (web sidebars, whose scroll box Chromium can leave
 /// out of the tree; the wheel at their centre scrolls it anyway). Apps that scroll on their own
 /// (Electron editors, chat lists) report none. Each comes with the smaller of its visible percentages
-/// (vertical, horizontal): 100 = nothing to scroll; navigation landmarks count as 0, main ones as `hints::MAIN`.
+/// (vertical, horizontal): 100 = nothing to scroll; navigation landmarks count as 0, main and custom ones
+/// (Mattermost's thread panel, an ARIA complementary) as `hints::MAIN`.
 pub fn scrollable_rects(hwnd: HWND) -> Result<Vec<(Rect, f64)>> {
     unsafe {
         let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
@@ -261,7 +262,10 @@ pub fn scrollable_rects(hwnd: HWND) -> Result<Vec<(Rect, f64)>> {
             &is(UIA_ScrollHorizontallyScrollablePropertyId)?,
         )?;
         let landmark = |id: i32| uia.CreatePropertyCondition(UIA_LandmarkTypePropertyId, &VARIANT::from(id));
-        let navigation = uia.CreateOrCondition(&landmark(UIA_NavigationLandmarkTypeId.0)?, &landmark(UIA_MainLandmarkTypeId.0)?)?;
+        let navigation = uia.CreateOrCondition(
+            &uia.CreateOrCondition(&landmark(UIA_NavigationLandmarkTypeId.0)?, &landmark(UIA_MainLandmarkTypeId.0)?)?,
+            &landmark(UIA_CustomLandmarkTypeId.0)?,
+        )?;
         let candidate = uia.CreateOrCondition(
             &uia.CreateAndCondition(&is(UIA_IsScrollPatternAvailablePropertyId)?, &scrolls)?,
             &navigation,
@@ -278,7 +282,7 @@ pub fn scrollable_rects(hwnd: HWND) -> Result<Vec<(Rect, f64)>> {
                 let landmark = element.GetCachedPropertyValue(UIA_LandmarkTypePropertyId).ok().and_then(|v| i32::try_from(&v).ok());
                 let shown = match landmark {
                     Some(id) if id == UIA_NavigationLandmarkTypeId.0 => 0.0,
-                    Some(id) if id == UIA_MainLandmarkTypeId.0 => crate::hints::MAIN,
+                    Some(id) if id == UIA_MainLandmarkTypeId.0 || id == UIA_CustomLandmarkTypeId.0 => crate::hints::MAIN,
                     _ => view(UIA_ScrollVerticalViewSizePropertyId).min(view(UIA_ScrollHorizontalViewSizePropertyId)),
                 };
                 if center(rect).is_some_and(|c| shows(hwnd, app, c)) {
