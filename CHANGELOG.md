@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/).
 
+## [0.5.8] - 2026-11-10
+
+### Fixed
+
+- `;` labels the first editor tab in Antigravity and VS Code. The thin resize bar beside the editor took its label, so typing it clicked the bar and nothing happened. Elements thinner than 6 pixels no longer get a label.
+
 ## [0.5.7] - 2026-11-10
 
 ### Fixed
