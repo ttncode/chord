@@ -32,6 +32,7 @@ use crate::config::Mouse;
 use crate::layout::{self, Layout};
 
 const WHEEL_STEP: i32 = 120;
+pub const TAP_STEP: i32 = 48;
 const XBUTTON1: i32 = 1;
 const XBUTTON2: i32 = 2;
 
@@ -120,7 +121,8 @@ pub fn mouse(action: Mouse) {
             0,
         ),
         Mouse::ScrollUp | Mouse::ScrollDown | Mouse::ScrollLeft | Mouse::ScrollRight => {
-            scroll(action, 3 * WHEEL_STEP);
+            // Chrome scrolls 100px a notch and 40px an arrow press; a tap should match the arrow.
+            scroll(action, TAP_STEP);
         }
         Mouse::Back => send_mouse(&[MOUSEEVENTF_XDOWN, MOUSEEVENTF_XUP], XBUTTON1),
         Mouse::Forward => send_mouse(&[MOUSEEVENTF_XDOWN, MOUSEEVENTF_XUP], XBUTTON2),

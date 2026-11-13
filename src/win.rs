@@ -166,10 +166,11 @@ struct Held {
     next: Instant,
 }
 
-/// Scrolling repeats fast in small steps so it glides; other actions repeat like a held key.
-const SCROLL_DELAY: Duration = Duration::from_millis(200);
-const SCROLL_EVERY: Duration = Duration::from_millis(15);
-const SCROLL_STEP: i32 = 40;
+/// Held scrolling repeats one tap like a held arrow key in Chrome on a Mac: macOS key repeat
+/// is 30 ms after about 225 ms; Chrome animates each step. Other actions repeat like a held key.
+const SCROLL_DELAY: Duration = Duration::from_millis(225);
+const SCROLL_EVERY: Duration = Duration::from_millis(30);
+const SCROLL_STEP: i32 = window::TAP_STEP;
 const REPEAT_DELAY: Duration = Duration::from_millis(400);
 const REPEAT_EVERY: Duration = Duration::from_millis(100);
 
