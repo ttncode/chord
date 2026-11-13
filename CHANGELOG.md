@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/).
 
+## [0.5.9] - 2026-11-14
+
+### Changed
+
+- `j` `k` `h` `l` (and `/mj` `/mk` `/mh` `/ml`) scroll like the arrow keys in Chrome on a Mac. A tap scrolls about as far as one arrow press instead of three wheel notches. Holding the letter repeats that step every 30 ms after 225 ms, like a held arrow key, so it glides slower than before.
+
 ## [0.5.8] - 2026-11-10
 
 ### Fixed
