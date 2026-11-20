@@ -135,9 +135,10 @@ pub fn areas(rects: Vec<(Rect, f64)>) -> Vec<Rect> {
 
 /// Where to put the pointer so the wheel scrolls something: None when it already rests on a scroll
 /// area, else the centre of the biggest one. `rects` as `uia::scrollable_rects` gives them; navigation
-/// landmarks (0) don't count, as they may not scroll at all.
+/// landmarks (0) don't count, as they may not scroll at all; main landmarks (`MAIN`) do, as `areas`
+/// keeps them.
 pub fn aim(rects: Vec<(Rect, f64)>, pointer: (i32, i32)) -> Option<(i32, i32)> {
-    let areas = areas(rects.into_iter().filter(|&(_, shown)| shown > 0.0).collect());
+    let areas = areas(rects.into_iter().filter(|&(_, shown)| shown != 0.0).collect());
     let inside = |r: &Rect| (r.0..r.2).contains(&pointer.0) && (r.1..r.3).contains(&pointer.1);
     if areas.iter().any(inside) {
         return None;
@@ -243,6 +244,14 @@ mod tests {
         assert_eq!(aim(rects.clone(), (100, 500)), Some((600, 500)));
         assert_eq!(aim(vec![], (100, 500)), None);
     }
+
+    #[test]
+    fn the_wheel_stays_on_a_picked_main_landmark() {
+        // ChatGPT: a sidebar list and the chat, which only its main landmark stands for.
+        let rects = vec![((0, 230, 340, 900), 50.0), ((340, 90, 1900, 1000), MAIN)];
+        assert_eq!(aim(rects, (1137, 557)), None);
+    }
+
     #[test]
     fn few_labels_are_single_letters() {
         assert_eq!(labels(3), vec!["a", "d", "s"]);
