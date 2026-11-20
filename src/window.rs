@@ -3,7 +3,7 @@
 use std::time::{Duration, Instant};
 
 use std::sync::Mutex;
-use std::sync::atomic::{AtomicI32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
 
 use windows::Win32::Foundation::{BOOL, HWND, LPARAM, POINT, RECT, WPARAM};
 use windows::Win32::Graphics::Gdi::{GetMonitorInfoW, MONITOR_DEFAULTTONEAREST, MONITORINFO, MonitorFromWindow};
@@ -113,6 +113,13 @@ pub fn dragging() -> bool {
     unsafe { GetAsyncKeyState(i32::from(VK_LBUTTON.0)) < 0 }
 }
 
+static CARRYING: AtomicBool = AtomicBool::new(false);
+
+/// A `drag` pressed the left button and it is still down (a physical release ends it too).
+pub fn carrying() -> bool {
+    CARRYING.load(Ordering::Relaxed) && dragging()
+}
+
 /// Presses the left button at (`x`, `y`), or slides there and lets go when it is already down.
 /// Apps start a drag only after the pointer moves a few pixels with the button down, and take a drop
 /// only where the pointer hovered first: one jump does neither.
@@ -158,7 +165,11 @@ pub fn mouse(action: Mouse) {
         }
         Mouse::Back => send_mouse(&[MOUSEEVENTF_XDOWN, MOUSEEVENTF_XUP], XBUTTON1),
         Mouse::Forward => send_mouse(&[MOUSEEVENTF_XDOWN, MOUSEEVENTF_XUP], XBUTTON2),
-        Mouse::Drag => send_mouse(&[if dragging() { MOUSEEVENTF_LEFTUP } else { MOUSEEVENTF_LEFTDOWN }], 0),
+        Mouse::Drag => {
+            let down = !dragging();
+            CARRYING.store(down, Ordering::Relaxed);
+            send_mouse(&[if down { MOUSEEVENTF_LEFTDOWN } else { MOUSEEVENTF_LEFTUP }], 0);
+        }
         Mouse::Point => {}
     }
 }

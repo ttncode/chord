@@ -795,6 +795,7 @@ unsafe extern "system" fn hook(code: i32, wparam: WPARAM, lparam: LPARAM) -> LRE
                     if down && (vk == VK_SPACE || vk == VK_CAPITAL) {
                         m.sync_modifiers(|k| unsafe { GetAsyncKeyState(k as i32) } < 0);
                     }
+                    m.carrying = window::carrying();
                     m.key_at(vk, down, event.time)
                 })
             }));

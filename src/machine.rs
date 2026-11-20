@@ -111,6 +111,8 @@ pub struct Machine {
     last_event_ms: u32,
     /// The letter typed last; only its release ends a held `repeat` chord.
     last_letter: u16,
+    /// A chord `drag` holds the mouse button: the arrows glide the pointer outside chord mode too.
+    pub carrying: bool,
 }
 
 /// A held key that was pressed last auto-repeats well within this; longer silence means its release was lost.
@@ -137,6 +139,7 @@ impl Machine {
             last_down: 0,
             last_event_ms: 0,
             last_letter: 0,
+            carrying: false,
         }
     }
 
@@ -242,7 +245,7 @@ impl Machine {
             _ => {}
         }
 
-        if !self.chord_mode || self.ctrl_alt_win_held() {
+        if self.ctrl_alt_win_held() || !(self.chord_mode || self.carrying && arrow_bit(vk).is_some()) {
             return PASS;
         }
         if let Some(bit) = arrow_bit(vk) {
@@ -591,6 +594,17 @@ mod tests {
         assert_eq!(release(&mut m, VK_SPACE), block_with(Effect::Cancel));
         assert_eq!(release(&mut m, VK_DOWN), block());
         assert_eq!(press(&mut m, VK_DOWN), pass());
+    }
+
+    #[test]
+    fn arrows_glide_outside_chord_mode_while_a_drag_carries_something() {
+        let mut m = Machine::new();
+        m.carrying = true;
+        assert_eq!(press(&mut m, VK_RIGHT), block_with(Effect::Glide(GLIDE_RIGHT)));
+        assert_eq!(release(&mut m, VK_RIGHT), block_with(Effect::Glide(0)));
+        assert_eq!(press(&mut m, G), pass());
+        m.carrying = false;
+        assert_eq!(press(&mut m, VK_RIGHT), pass());
     }
 
     #[test]
