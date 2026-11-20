@@ -43,6 +43,8 @@ pub enum Mouse {
     Forward,
     /// Only moves the pointer: what `hints = "scroll"` does with the picked area.
     Point,
+    /// Presses the left button and keeps it down; run again to let go (drag and drop).
+    Drag,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -396,8 +398,9 @@ fn parse_chord(key: &str, value: &toml::Value) -> Result<(Chord, Option<regex::R
                 "scroll-right" => Mouse::ScrollRight,
                 "back" => Mouse::Back,
                 "forward" => Mouse::Forward,
+                "drag" => Mouse::Drag,
                 other => return Err(format!(
-                    "mouse \"{other}\" must be click, right-click, double-click, triple-click, middle-click, scroll-up, scroll-down, scroll-left, scroll-right, back or forward"
+                    "mouse \"{other}\" must be click, right-click, double-click, triple-click, middle-click, scroll-up, scroll-down, scroll-left, scroll-right, back, forward or drag"
                 )),
             })),
             other => return Err(format!("unknown field '{other}'")),

@@ -670,6 +670,7 @@ fn run_action(action: &Action) {
             let keys = if *layout == Layout::NextDesktop { "win+ctrl+right" } else { "win+ctrl+left" };
             window::move_to_desktop(|| send_combo(&parse_shortcut(keys).expect("built-in shortcut").remove(0)));
         }
+        Action::Window(Layout::Move) => window::start_move(),
         Action::Window(layout) => window::snap(*layout),
         // Hint chords never get here: `run` handles them while typing.
         Action::Hints(_) => {}

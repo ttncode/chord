@@ -5,7 +5,7 @@ use std::time::{Duration, Instant};
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicI32, Ordering};
 
-use windows::Win32::Foundation::{BOOL, HWND, LPARAM, RECT};
+use windows::Win32::Foundation::{BOOL, HWND, LPARAM, RECT, WPARAM};
 use windows::Win32::Graphics::Gdi::{GetMonitorInfoW, MONITOR_DEFAULTTONEAREST, MONITORINFO, MonitorFromWindow};
 use windows::Win32::UI::HiDpi::GetDpiForWindow;
 use windows::Win32::Graphics::Dwm::{DWMWA_CLOAKED, DWMWA_EXTENDED_FRAME_BOUNDS, DwmGetWindowAttribute};
@@ -13,13 +13,13 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{
     INPUT, INPUT_0, INPUT_MOUSE, MOUSE_EVENT_FLAGS, MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP,
     MOUSEEVENTF_ABSOLUTE, MOUSEEVENTF_MIDDLEDOWN, MOUSEEVENTF_MIDDLEUP, MOUSEEVENTF_MOVE, MOUSEEVENTF_VIRTUALDESK, MOUSEEVENTF_RIGHTDOWN,
     MOUSEEVENTF_HWHEEL, MOUSEEVENTF_RIGHTUP, MOUSEEVENTF_WHEEL, MOUSEEVENTF_XDOWN, MOUSEEVENTF_XUP, MOUSEINPUT,
-    SendInput,
+    GetAsyncKeyState, SendInput, VK_LBUTTON,
 };
 use windows::Win32::UI::WindowsAndMessaging::{
     EnumWindows, GW_OWNER, GetForegroundWindow, GetSystemMetrics, SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN,
     SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN, SetCursorPos, GetWindow, GetWindowTextLengthW, GetWindowThreadProcessId, IsIconic,
     IsWindowVisible, SW_RESTORE, SetForegroundWindow, ShowWindow, GetClassNameW, GetWindowLongW, GetWindowRect, GWL_EXSTYLE, IsZoomed, WS_EX_TOOLWINDOW, SW_HIDE, SW_MAXIMIZE, SW_SHOW,
-    SWP_NOACTIVATE, SWP_NOZORDER, SetWindowPos,
+    SWP_NOACTIVATE, SWP_NOZORDER, SetWindowPos, PostMessageW, SC_MOVE, WM_SYSCOMMAND,
 };
 use windows::Win32::Foundation::E_FAIL;
 use windows::Win32::System::Com::{
@@ -126,6 +126,11 @@ pub fn mouse(action: Mouse) {
         }
         Mouse::Back => send_mouse(&[MOUSEEVENTF_XDOWN, MOUSEEVENTF_XUP], XBUTTON1),
         Mouse::Forward => send_mouse(&[MOUSEEVENTF_XDOWN, MOUSEEVENTF_XUP], XBUTTON2),
+        Mouse::Drag => {
+            // The real button state, so a physical click in between can't leave it the wrong way round.
+            let held = unsafe { GetAsyncKeyState(i32::from(VK_LBUTTON.0)) } < 0;
+            send_mouse(&[if held { MOUSEEVENTF_LEFTUP } else { MOUSEEVENTF_LEFTDOWN }], 0);
+        }
         Mouse::Point => {}
     }
 }
@@ -280,6 +285,18 @@ pub fn snap(layout: Layout) {
 
 /// The window in front, unless it is the desktop or the taskbar: those are windows too, and moving
 /// or hiding them breaks the shell until sign-out.
+/// Starts Windows' own keyboard Move on the window in front (its system menu's Move).
+pub fn start_move() {
+    let Some(hwnd) = movable_front() else { return };
+    unsafe {
+        // Move is greyed out on a maximized window.
+        if IsZoomed(hwnd).as_bool() {
+            let _ = ShowWindow(hwnd, SW_RESTORE);
+        }
+        let _ = PostMessageW(hwnd, WM_SYSCOMMAND, WPARAM(SC_MOVE as usize), LPARAM(0));
+    }
+}
+
 fn movable_front() -> Option<HWND> {
     let hwnd = unsafe { GetForegroundWindow() };
     let shell = matches!(foreground_class().as_str(), "Progman" | "WorkerW" | "Shell_TrayWnd" | "Shell_SecondaryTrayWnd");

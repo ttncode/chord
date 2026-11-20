@@ -53,6 +53,7 @@ name = "Global"
 "/w]" = { name = "Window: right master (again: 1/4 middle, 1/4 left)", window = "right-master", repeat = true }
 "/wn" = { name = "Window: restore / minimize", shortcut = "win+down", repeat = true }
 "/wq" = { name = "Window: close", shortcut = "alt+f4" }
+"/wg" = { name = "Window: move with arrows", window = "move" }
 
 # Virtual desktops
 # Win+Ctrl+Left/Right switch desktops; these take the window in front along (tap again to keep going).
@@ -101,6 +102,7 @@ name = "Global"
 "/mt" = { name = "Go to top", shortcut = "ctrl+home" }
 "/mb" = { name = "Go to bottom", shortcut = "ctrl+end" }
 "/ms" = { name = "Mouse: pick scroll area (labels)", hints = "scroll" }
+"/mg" = { name = "Mouse: hold / drop (drag)", mouse = "drag" }
 
 # Scroll with nothing typed: hold j/k/h/l to keep scrolling (Vim directions). No chord may start with these letters.
 "j" = { name = "Scroll down (hold)", mouse = "scroll-down", repeat = true }

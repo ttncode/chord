@@ -25,6 +25,8 @@ pub enum Layout {
     /// Takes the window along to the previous / next virtual desktop.
     PreviousDesktop,
     NextDesktop,
+    /// Windows' own Move: the arrow keys move the window, Enter drops it, Esc puts it back.
+    Move,
 }
 
 /// One place for the window, inside the monitor's work area (the screen minus the taskbar).
@@ -50,7 +52,7 @@ const TT: f64 = 2.0 / 3.0;
 const Q: f64 = 1.0 / 4.0;
 
 pub const NAMES: &str = "left, right, top, bottom, maximize, center, padded, top-left, top-right, bottom-left, \
-    bottom-right, left-third, middle-third, right-third, narrow-left, wide-center, narrow-right, left-master, right-master, previous-desktop or next-desktop";
+    bottom-right, left-third, middle-third, right-third, narrow-left, wide-center, narrow-right, left-master, right-master, previous-desktop, next-desktop or move";
 
 impl Layout {
     pub fn parse(name: &str) -> Option<Self> {
@@ -77,11 +79,12 @@ impl Layout {
             "right-master" => RightMaster,
             "previous-desktop" => PreviousDesktop,
             "next-desktop" => NextDesktop,
+            "move" => Move,
             _ => return None,
         })
     }
 
-    /// The places the layout steps through when it runs again on the same window. Empty for `Maximize` and the desktop moves.
+    /// The places the layout steps through when it runs again on the same window. Empty for `Maximize`, `Move` and the desktop moves.
     pub fn frames(self) -> &'static [Frame] {
         use Frame::*;
         use Layout::*;
@@ -90,7 +93,7 @@ impl Layout {
             Right => &[Part(H, 0.0, H, 1.0), Part(T, 0.0, TT, 1.0), Part(TT, 0.0, T, 1.0)],
             Top => &[Part(0.0, 0.0, 1.0, H), Part(0.0, 0.0, 1.0, TT), Part(0.0, 0.0, 1.0, T)],
             Bottom => &[Part(0.0, H, 1.0, H), Part(0.0, T, 1.0, TT), Part(0.0, TT, 1.0, T)],
-            Maximize | PreviousDesktop | NextDesktop => &[],
+            Maximize | PreviousDesktop | NextDesktop | Move => &[],
             Center => &[Part(0.15, 0.10, 0.70, 0.80)],
             Padded => &[Gaps(50, 30, 10, 30)],
             TopLeft => &[Part(0.0, 0.0, H, H)],
@@ -147,7 +150,7 @@ mod tests {
     fn every_name_parses_and_has_a_place() {
         for name in NAMES.replace(" or ", ", ").split(", ") {
             let layout = Layout::parse(name).unwrap_or_else(|| panic!("{name}"));
-            let placeless = matches!(layout, Layout::Maximize | Layout::PreviousDesktop | Layout::NextDesktop);
+            let placeless = matches!(layout, Layout::Maximize | Layout::PreviousDesktop | Layout::NextDesktop | Layout::Move);
             assert_eq!(layout.frames().is_empty(), placeless, "{name}");
         }
         assert_eq!(Layout::parse("middle"), None);
