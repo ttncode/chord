@@ -61,7 +61,7 @@ pub fn targets(elements: Vec<(Rect, Kind)>) -> Vec<Rect> {
     let elements: Vec<(Rect, Kind)> = elements.into_iter().filter(|(r, _)| r.2 - r.0 >= MIN_SIDE && r.3 - r.1 >= MIN_SIDE).collect();
     let in_scroll_bar = |r: Rect| elements.iter().any(|&(bar, k)| k == Kind::ScrollBar && (same(bar, r) || contains(bar, r)));
     let elements: Vec<(Rect, Kind)> = elements.iter().copied().filter(|&(r, _)| !in_scroll_bar(r)).collect();
-    let mut kept: Vec<Rect> = Vec::new();
+    let mut kept: Vec<(Rect, Kind)> = Vec::new();
     let holds_any = |r: Rect| elements.iter().any(|&(inner, _)| contains(r, inner));
     let holds_control = |r: Rect| elements.iter().any(|&(inner, k)| k != Kind::Generic && contains(r, inner));
     let cells_in = |r: Rect| elements.iter().filter(move |&&(c, k)| k == Kind::Cell && contains(r, c)).map(|&(c, _)| c);
@@ -89,10 +89,16 @@ pub fn targets(elements: Vec<(Rect, Kind)>) -> Vec<Rect> {
             // columns (Explorer's details view) or far beyond its text.
             r.2 = r.2.min(r.0 + ITEM_WIDTH_PER_HEIGHT * (r.3 - r.1));
         }
-        if !part_of_a_control && !box_around_others && !kept.iter().any(|&k| same(k, r) || (mostly_overlap(k, r) && !contains(k, r) && !contains(r, k))) {
-            kept.push(r);
+        // A button on the edge of an item (Discord's Remove on an attachment card) is not a part of it.
+        let overlaps = |k: Rect, k_kind: Kind| {
+            let on_an_item = kind == Kind::Button && matches!(k_kind, Kind::Item | Kind::Cell);
+            mostly_overlap(k, r) && !contains(k, r) && !contains(r, k) && !on_an_item
+        };
+        if !part_of_a_control && !box_around_others && !kept.iter().any(|&(k, k_kind)| same(k, r) || overlaps(k, k_kind)) {
+            kept.push((r, kind));
         }
     }
+    let mut kept: Vec<Rect> = kept.into_iter().map(|(r, _)| r).collect();
     kept.sort_by_key(|r| (r.1, r.0));
     kept.truncate(MAX_LABELS);
     kept
@@ -335,6 +341,9 @@ mod tests {
         // Mattermost: an avatar button and its status badge poking out of it; labels stacked unreadably.
         let (avatar, badge) = ((1300, 90, 1332, 122), (1316, 106, 1336, 126));
         assert_eq!(targets(vec![control(avatar), control(badge)]), vec![avatar]);
+        // Discord: Remove sticks out of the attachment card it belongs to; both keep a label.
+        let (card, remove) = ((397, 745, 615, 963), (598, 746, 630, 778));
+        assert_eq!(targets(vec![item(card), button(remove)]), vec![card, remove]);
         // Rows that only touch keep both.
         let (a, b) = ((0, 0, 300, 20), (0, 20, 300, 40));
         assert_eq!(targets(vec![control(a), control(b)]), vec![a, b]);
