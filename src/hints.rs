@@ -40,6 +40,10 @@ pub enum Kind {
     ScrollBar,
     /// Tree or list item: an open one's box also covers the items nested in it.
     Item,
+    /// Table row or cell (web pages report both as data items). A row holding cells gets one label,
+    /// on its first cell with no real control in it: Odoo opens a record from its title cell, not
+    /// from the checkbox cell before it; Drive's name cell still counts with its share icon.
+    Cell,
 }
 
 /// The rectangles worth a label, top-left first. Containers (lists, panes) are already left out by
@@ -47,7 +51,8 @@ pub enum Kind {
 /// gets no label, except buttons (a tab's close button) and items nested in an open item (a folder's files), which keep theirs while
 /// the open item is cut down to its own row above them. A generic box holding other clickable
 /// things gives way to them (Vimium's rule for web pages). Near-duplicates and mostly overlapping
-/// ones get one. Scroll bars and their parts get none.
+/// ones get one. Scroll bars and their parts get none. Cells hold no parts: a checkbox or a button in
+/// a row keeps its label, and the row's label moves onto its first plain cell (see `Kind::Cell`).
 pub fn targets(elements: Vec<(Rect, Kind)>) -> Vec<Rect> {
     let same = |a: Rect, b: Rect| {
         (a.0 - b.0).abs() <= SAME && (a.1 - b.1).abs() <= SAME && (a.2 - b.2).abs() <= SAME && (a.3 - b.3).abs() <= SAME
@@ -57,12 +62,24 @@ pub fn targets(elements: Vec<(Rect, Kind)>) -> Vec<Rect> {
     let in_scroll_bar = |r: Rect| elements.iter().any(|&(bar, k)| k == Kind::ScrollBar && (same(bar, r) || contains(bar, r)));
     let elements: Vec<(Rect, Kind)> = elements.iter().copied().filter(|&(r, _)| !in_scroll_bar(r)).collect();
     let mut kept: Vec<Rect> = Vec::new();
+    let holds_any = |r: Rect| elements.iter().any(|&(inner, _)| contains(r, inner));
+    let holds_control = |r: Rect| elements.iter().any(|&(inner, k)| k != Kind::Generic && contains(r, inner));
+    let cells_in = |r: Rect| elements.iter().filter(move |&&(c, k)| k == Kind::Cell && contains(r, c)).map(|&(c, _)| c);
     for &(mut r, kind) in &elements {
+        let row = kind == Kind::Cell && cells_in(r).next().is_some();
+        if row {
+            match cells_in(r).filter(|&c| !holds_control(c)).min_by_key(|c| (c.1, c.0)) {
+                Some(first_plain) => r = first_plain,
+                None => continue,
+            }
+        } else if kind == Kind::Cell && elements.iter().any(|&(row, k)| k == Kind::Cell && contains(row, r)) {
+            continue;
+        }
         let part_of_a_control = kind != Kind::Button
-            && elements
-                .iter()
-                .any(|&(outer, k)| k != Kind::Generic && !(k == Kind::Item && kind == Kind::Item) && contains(outer, r));
-        let box_around_others = kind == Kind::Generic && elements.iter().any(|&(inner, _)| contains(r, inner));
+            && elements.iter().any(|&(outer, k)| {
+                !matches!(k, Kind::Generic | Kind::Cell) && !(k == Kind::Item && kind == Kind::Item) && contains(outer, r)
+            });
+        let box_around_others = !row && matches!(kind, Kind::Generic | Kind::Cell) && holds_any(r);
         if kind == Kind::Item {
             let nested_top = elements.iter().filter(|&&(inner, k)| k == Kind::Item && contains(r, inner) && inner.1 > r.1).map(|(inner, _)| inner.1).min();
             if let Some(top) = nested_top {
@@ -284,6 +301,25 @@ mod tests {
         let (name, date) = ((20, 0, 200, 20), (200, 0, 350, 20));
         let other_row = (0, 20, 500, 40);
         assert_eq!(targets(vec![generic(name), control(row), generic(date), control(other_row)]), vec![row, other_row]);
+    }
+
+    #[test]
+    fn a_table_row_gets_its_label_on_its_first_plain_cell_and_keeps_its_controls() {
+        // Odoo's task list: every row and cell is clickable; the title cell opens the task.
+        let cell = |r: Rect| (r, Kind::Cell);
+        let row = (0, 233, 1905, 275);
+        let (selector, checkbox) = ((0, 233, 41, 275), (16, 246, 30, 261));
+        let (title, size) = ((40, 233, 990, 275), (989, 233, 1092, 275));
+        let (stage, stage_button) = ((1754, 233, 1784, 275), (1759, 242, 1776, 265));
+        let got = targets(vec![
+            cell(row), cell(selector), control(checkbox), cell(title), cell(size), cell(stage), button(stage_button),
+        ]);
+        assert_eq!(got, vec![title, stage_button, checkbox]);
+        // Drive: an icon in the name cell keeps its label, and the row's goes on the name cell.
+        let (name, icon) = ((278, 790, 1109, 838), (484, 805, 501, 822));
+        assert_eq!(targets(vec![cell((277, 790, 1844, 838)), cell(name), generic(icon), cell((1340, 790, 1555, 838))]), vec![name, icon]);
+        // A lone cell (a column header) keeps its own label.
+        assert_eq!(targets(vec![cell(size)]), vec![size]);
     }
 
     #[test]

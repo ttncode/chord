@@ -139,6 +139,8 @@ pub fn clickable_rects(hwnd: HWND) -> Result<Vec<(Rect, Kind)>> {
                         Kind::Item
                     } else if kind == UIA_ButtonControlTypeId || kind == UIA_SplitButtonControlTypeId {
                         Kind::Button
+                    } else if kind == UIA_DataItemControlTypeId {
+                        Kind::Cell
                     } else if kind == UIA_ScrollBarControlTypeId {
                         Kind::ScrollBar
                     } else if CONTROLS.contains(&kind) {
