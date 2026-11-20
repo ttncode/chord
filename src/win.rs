@@ -340,8 +340,12 @@ impl Hints {
                 if uia::DEBUG.load(std::sync::atomic::Ordering::Relaxed) {
                     say!("  -> {label} at ({x}, {y}): {}", uia::describe_at(x, y));
                 }
-                window::move_pointer(x, y);
-                without_shift(|| window::mouse(self.kind));
+                if self.kind == Mouse::Drag {
+                    window::drag_at(x, y);
+                } else {
+                    window::move_pointer(x, y);
+                    without_shift(|| window::mouse(self.kind));
+                }
             }
             None => say!("  -> no hint '{label}'"),
         }

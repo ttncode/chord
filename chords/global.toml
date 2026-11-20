@@ -119,5 +119,6 @@ name = "Global"
 "'" = { name = "Right-click (labels)", hints = "right-click" }
 "[" = { name = "Middle-click / new tab (labels)", hints = "middle-click" }
 "]" = { name = "Double-click / open file (labels)", hints = "double-click" }
+"=" = { name = "Drag: pick up, then drop (labels)", hints = "drag" }
 "/;" = { name = "Taskbar: click (labels)", hints = "click", on = "taskbar" }
 "/'" = { name = "Taskbar: right-click (labels)", hints = "right-click", on = "taskbar" }

@@ -5,7 +5,7 @@ use std::time::{Duration, Instant};
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicI32, Ordering};
 
-use windows::Win32::Foundation::{BOOL, HWND, LPARAM, RECT, WPARAM};
+use windows::Win32::Foundation::{BOOL, HWND, LPARAM, POINT, RECT, WPARAM};
 use windows::Win32::Graphics::Gdi::{GetMonitorInfoW, MONITOR_DEFAULTTONEAREST, MONITORINFO, MonitorFromWindow};
 use windows::Win32::UI::HiDpi::GetDpiForWindow;
 use windows::Win32::Graphics::Dwm::{DWMWA_CLOAKED, DWMWA_EXTENDED_FRAME_BOUNDS, DwmGetWindowAttribute};
@@ -19,7 +19,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
     EnumWindows, GW_OWNER, GetForegroundWindow, GetSystemMetrics, SM_CXVIRTUALSCREEN, SM_CYVIRTUALSCREEN,
     SM_XVIRTUALSCREEN, SM_YVIRTUALSCREEN, SetCursorPos, GetWindow, GetWindowTextLengthW, GetWindowThreadProcessId, IsIconic,
     IsWindowVisible, SW_RESTORE, SetForegroundWindow, ShowWindow, GetClassNameW, GetWindowLongW, GetWindowRect, GWL_EXSTYLE, IsZoomed, WS_EX_TOOLWINDOW, SW_HIDE, SW_MAXIMIZE, SW_SHOW,
-    SWP_NOACTIVATE, SWP_NOZORDER, SetWindowPos, PostMessageW, SC_MOVE, WM_SYSCOMMAND,
+    SWP_NOACTIVATE, SWP_NOZORDER, SetWindowPos, GetCursorPos, PostMessageW, SC_MOVE, WM_SYSCOMMAND,
 };
 use windows::Win32::Foundation::E_FAIL;
 use windows::Win32::System::Com::{
@@ -107,6 +107,38 @@ fn bring_to_front(hwnd: HWND) {
     }
 }
 
+/// The left button is down. Reads the real state, so a physical click in between can't leave a
+/// `drag` the wrong way round.
+pub fn dragging() -> bool {
+    unsafe { GetAsyncKeyState(i32::from(VK_LBUTTON.0)) < 0 }
+}
+
+/// Presses the left button at (`x`, `y`), or slides there and lets go when it is already down.
+/// Apps start a drag only after the pointer moves a few pixels with the button down, and take a drop
+/// only where the pointer hovered first: one jump does neither.
+pub fn drag_at(x: i32, y: i32) {
+    let step = |x, y| {
+        move_pointer(x, y);
+        std::thread::sleep(Duration::from_millis(15));
+    };
+    if !dragging() {
+        step(x, y);
+        mouse(Mouse::Drag);
+        for dx in [2, 4, 6, 8, 10] {
+            step(x + dx, y);
+        }
+        return;
+    }
+    let mut from = POINT::default();
+    let _ = unsafe { GetCursorPos(&mut from) };
+    const STEPS: i32 = 12;
+    for i in 1..=STEPS {
+        step(from.x + (x - from.x) * i / STEPS, from.y + (y - from.y) * i / STEPS);
+    }
+    std::thread::sleep(Duration::from_millis(100));
+    mouse(Mouse::Drag);
+}
+
 pub fn mouse(action: Mouse) {
     match action {
         Mouse::Click => send_mouse(&[MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP], 0),
@@ -126,11 +158,7 @@ pub fn mouse(action: Mouse) {
         }
         Mouse::Back => send_mouse(&[MOUSEEVENTF_XDOWN, MOUSEEVENTF_XUP], XBUTTON1),
         Mouse::Forward => send_mouse(&[MOUSEEVENTF_XDOWN, MOUSEEVENTF_XUP], XBUTTON2),
-        Mouse::Drag => {
-            // The real button state, so a physical click in between can't leave it the wrong way round.
-            let held = unsafe { GetAsyncKeyState(i32::from(VK_LBUTTON.0)) } < 0;
-            send_mouse(&[if held { MOUSEEVENTF_LEFTUP } else { MOUSEEVENTF_LEFTDOWN }], 0);
-        }
+        Mouse::Drag => send_mouse(&[if dragging() { MOUSEEVENTF_LEFTUP } else { MOUSEEVENTF_LEFTDOWN }], 0),
         Mouse::Point => {}
     }
 }

@@ -379,7 +379,8 @@ fn parse_chord(key: &str, value: &toml::Value) -> Result<(Chord, Option<regex::R
                     "double-click" => Mouse::DoubleClick,
                     "middle-click" => Mouse::MiddleClick,
                     "scroll" => Mouse::Point,
-                    other => return Err(format!("hints \"{other}\" must be click, right-click, double-click, middle-click or scroll")),
+                    "drag" => Mouse::Drag,
+                    other => return Err(format!("hints \"{other}\" must be click, right-click, double-click, middle-click, scroll or drag")),
                 };
                 actions.push(Action::Hints(Hint { click, taskbar: false }));
             }
@@ -710,6 +711,8 @@ mod tests {
         assert_eq!(f.chords["["].action, Action::Hints(Hint { click: Mouse::MiddleClick, taskbar: false }));
         let f = global(r#""/ms" = { name = "Scroll area", hints = "scroll" }"#);
         assert_eq!(f.chords["/ms"].action, Action::Hints(Hint { click: Mouse::Point, taskbar: false }));
+        let f = global(r#""=" = { name = "Drag", hints = "drag" }"#);
+        assert_eq!(f.chords["="].action, Action::Hints(Hint { click: Mouse::Drag, taskbar: false }));
     }
 
     #[test]
