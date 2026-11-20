@@ -77,6 +77,8 @@ pub enum Effect {
     Pick,
     /// Arrows held in chord mode changed (`GLIDE_*` bits; 0 = none): the pointer glides that way.
     Glide(u8),
+    /// Enter while a drag carries something: let go of the mouse button where the pointer is.
+    Drop,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -245,6 +247,9 @@ impl Machine {
             _ => {}
         }
 
+        if vk == VK_RETURN && self.carrying && !self.chord_mode && !self.ctrl_alt_win_held() {
+            return self.block(i, Some(Effect::Drop));
+        }
         if self.ctrl_alt_win_held() || !(self.chord_mode || self.carrying && arrow_bit(vk).is_some()) {
             return PASS;
         }
@@ -603,7 +608,10 @@ mod tests {
         assert_eq!(press(&mut m, VK_RIGHT), block_with(Effect::Glide(GLIDE_RIGHT)));
         assert_eq!(release(&mut m, VK_RIGHT), block_with(Effect::Glide(0)));
         assert_eq!(press(&mut m, G), pass());
+        assert_eq!(press(&mut m, VK_RETURN), block_with(Effect::Drop));
+        assert_eq!(release(&mut m, VK_RETURN), block());
         m.carrying = false;
+        assert_eq!(press(&mut m, VK_RETURN), pass());
         assert_eq!(press(&mut m, VK_RIGHT), pass());
     }
 

@@ -564,6 +564,11 @@ pub fn run(chords_dir: PathBuf) {
                 // Space is up: a window carried to another desktop lands there.
                 window::put_down();
             }
+            Effect::Drop => {
+                if window::carrying() {
+                    window::mouse(Mouse::Drag);
+                }
+            }
             Effect::ToggleCaps => send_combo(&CAPS),
             Effect::ResyncCapsLight => resync_caps_light(),
             Effect::Quit => {
