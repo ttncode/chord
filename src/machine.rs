@@ -58,7 +58,10 @@ pub enum Effect {
     ToggleCaps,
     ResyncCapsLight,
     Enter,
+    /// A letter was typed; the buffer is now this.
     Show(Chord),
+    /// Backspace or Esc shortened the buffer to this.
+    Erase(Chord),
     Fire(Chord),
     /// Run this chord but stay in chord mode (Caps tap, or Shift + last letter).
     FireKeep(Chord),
@@ -254,11 +257,11 @@ impl Machine {
         match vk {
             VK_BACK => {
                 self.buffer.len = if self.shift_held() { 0 } else { self.buffer.len.saturating_sub(1) };
-                self.block(i, Some(Effect::Show(self.buffer)))
+                self.block(i, Some(Effect::Erase(self.buffer)))
             }
             VK_ESCAPE => {
                 self.buffer = Chord::new();
-                self.block(i, Some(Effect::Show(self.buffer)))
+                self.block(i, Some(Effect::Erase(self.buffer)))
             }
             VK_TAB => {
                 self.chord_mode = false;
@@ -275,13 +278,17 @@ impl Machine {
                     self.last = fired;
                     self.block(i, Some(Effect::FireKeep(fired)))
                 }
-                Some(c) if self.buffer.len < CHORD_CAP => {
+                Some(c) => {
+                    // Full: drop the first letter, so tapping `j` keeps scrolling past the cap.
+                    if self.buffer.len == CHORD_CAP {
+                        self.buffer.bytes.copy_within(1.., 0);
+                        self.buffer.len -= 1;
+                    }
                     self.buffer.bytes[self.buffer.len] = c;
                     self.buffer.len += 1;
                     self.last_letter = vk;
                     self.block(i, Some(Effect::Show(self.buffer)))
                 }
-                Some(_) => self.block(i, None),
                 None => PASS,
             },
         }
@@ -411,7 +418,8 @@ fn is_modifier(vk: u16) -> bool {
 
 /// The chord to try after `buffer` grew by one letter. `ran` is (typed letters, chord) of the last
 /// `repeat` chord run: one more letter re-runs that chord with its last letter swapped for the new
-/// one, so `j j k` scrolls down, down, up instead of looking up `jj` and `jjk`.
+/// one, so `j j k` scrolls down, down, up instead of looking up `jj` and `jjk`. A full buffer
+/// drops its first letter for the new one, so `typed` minus its first letter counts too.
 /// The highlighted row after Down (`down`) or Up in a list of `len` rows; it stops at either end.
 pub fn step(selected: Option<usize>, len: usize, down: bool) -> Option<usize> {
     let last = len.checked_sub(1)?;
@@ -432,11 +440,13 @@ pub fn first_shown(selected: Option<usize>, room: usize) -> usize {
 }
 
 pub fn repeat_candidate(ran: Option<(&str, &str)>, buffer: &str) -> String {
-    if let Some((typed, chord)) = ran {
-        if let Some(letter) = buffer.strip_prefix(typed).filter(|rest| rest.chars().count() == 1) {
+    if let (Some((typed, chord)), Some(letter)) = (ran, buffer.chars().last()) {
+        let kept = &buffer[..buffer.len() - letter.len_utf8()];
+        if kept == typed || (buffer.len() == typed.len() && typed.get(1..) == Some(kept)) {
             let mut swapped = chord.to_string();
             swapped.pop();
-            return swapped + letter;
+            swapped.push(letter);
+            return swapped;
         }
     }
     buffer.to_string()
@@ -691,14 +701,14 @@ mod tests {
         let mut m = in_chord_mode();
         press(&mut m, G);
         press(&mut m, D);
-        assert_eq!(press(&mut m, VK_BACK), block_with(Effect::Show(chord("g"))));
+        assert_eq!(press(&mut m, VK_BACK), block_with(Effect::Erase(chord("g"))));
     }
 
     #[test]
     fn escape_clears_the_buffer() {
         let mut m = in_chord_mode();
         press(&mut m, G);
-        assert_eq!(press(&mut m, VK_ESCAPE), block_with(Effect::Show(chord(""))));
+        assert_eq!(press(&mut m, VK_ESCAPE), block_with(Effect::Erase(chord(""))));
     }
 
     #[test]
@@ -909,17 +919,20 @@ mod tests {
         press(&mut m, G);
         press(&mut m, D);
         press(&mut m, 0xA1); // right shift
-        assert_eq!(press(&mut m, VK_BACK), block_with(Effect::Show(chord(""))));
+        assert_eq!(press(&mut m, VK_BACK), block_with(Effect::Erase(chord(""))));
     }
 
     #[test]
-    fn buffer_stops_growing_when_full() {
+    fn a_full_buffer_drops_its_first_letter() {
         let mut m = in_chord_mode();
-        for _ in 0..CHORD_CAP {
+        press(&mut m, D);
+        release(&mut m, D);
+        for _ in 1..CHORD_CAP {
             press(&mut m, G);
             release(&mut m, G);
         }
-        assert_eq!(press(&mut m, D), block());
+        let gs = "g".repeat(CHORD_CAP - 1);
+        assert_eq!(press(&mut m, G), block_with(Effect::Show(chord(&format!("{gs}g")))));
     }
 
     #[test]
@@ -948,6 +961,11 @@ mod tests {
         assert_eq!(repeat_candidate(Some(("jk", "k")), "jkk"), "k");
         assert_eq!(repeat_candidate(Some(("/vk", "/vk")), "/vkj"), "/vj");
         assert_eq!(repeat_candidate(ran, "jkx"), "jkx", "only one letter after the last run");
+        let full = "j".repeat(CHORD_CAP);
+        let slid = format!("{}k", &full[1..]);
+        assert_eq!(repeat_candidate(Some((&full, "j")), &full), "j", "a full buffer keeps tapping");
+        assert_eq!(repeat_candidate(Some((&full, "j")), &slid), "k");
+        assert_eq!(repeat_candidate(Some(("/vk", "/vk")), "/vj"), "/vj", "Backspace then a letter is no tap");
     }
 
     #[test]

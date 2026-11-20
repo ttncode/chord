@@ -434,8 +434,8 @@ pub fn run(chords_dir: PathBuf) {
                 session = Some(s);
                 show("");
             }
-            Effect::Show(chord) => {
-                let typed_letter = chord.as_str().len() > buffer.len();
+            Effect::Show(chord) | Effect::Erase(chord) => {
+                let typed_letter = matches!(effect, Effect::Show(_));
                 buffer = chord.as_str().to_string();
                 show(&buffer);
                 if let Some(h) = &hints {
