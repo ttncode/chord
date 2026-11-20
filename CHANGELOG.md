@@ -2,6 +2,21 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/).
 
+## [0.6.0] - 2026-11-21
+
+### Added
+
+- `=` drags with labels (`hints = "drag"`): pick a label to press the left button on it, then pick another to slide it there and let go. While chord holds the button, the arrow keys move the pointer without Space held, and `Enter` drops it where the pointer is.
+- `/mg` (`mouse = "drag"`) holds the left button down at the pointer; run it again, or press `Enter`, to let go.
+- `/wg` (`window = "move"`) starts Windows' own Move on the window in front: the arrow keys move it, `Enter` drops it, `Esc` puts it back.
+
+### Fixed
+
+- `j` `k` `h` `l` kept working only for 32 taps or holds; after that they did nothing until chord mode was entered again.
+- The pointer no longer jumps away from a page's main area that `j` `k` already scroll (ChatGPT's chat).
+- Table rows (Odoo's task list) get their label on the first plain cell, which opens the record, and their checkboxes and stars keep their own labels.
+- A button sticking out of a list item keeps its label (Discord's Remove on an attachment).
+
 ## [0.5.9] - 2026-11-14
 
 ### Changed
