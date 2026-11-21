@@ -19,7 +19,10 @@ pub fn set(on: bool, chords_dir: &Path) -> Result<(), String> {
         if on {
             let exe = std::env::current_exe().map_err(|e| e.to_string())?;
             let dir = std::path::absolute(chords_dir).map_err(|e| e.to_string())?;
-            let command = format!("\"{}\" --background --chords \"{}\"", exe.display(), dir.display());
+            let dir = dir.display().to_string();
+            // `\"` reads as a literal quote: `--chords "D:\"` would come back as `D:"`. Double it.
+            let tail = if dir.ends_with('\\') { "\\" } else { "" };
+            let command = format!("\"{}\" --background --chords \"{dir}{tail}\"", exe.display());
             let wide = HSTRING::from(command);
             let bytes = (wide.len() + 1) * 2;
             RegSetKeyValueW(HKEY_CURRENT_USER, RUN_KEY, VALUE, REG_SZ.0, Some(wide.as_ptr().cast()), bytes as u32)
