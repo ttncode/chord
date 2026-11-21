@@ -44,7 +44,7 @@ Source: "..\LICENSE"; DestDir: "{app}"; Flags: ignoreversion
 Name: "{userprograms}\chord"; Filename: "{app}\chord.exe"; WorkingDir: "{app}"
 
 [Registry]
-; Same value the tray's "Start with Windows" writes, so the two stay in sync.
+; The same Run value the tray's "Start with Windows" writes; the tray adds --chords for the folder in use.
 Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "chord"; ValueData: """{app}\chord.exe"" --background"; Flags: uninsdeletevalue; Tasks: startup
 
 [Run]

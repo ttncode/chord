@@ -237,8 +237,6 @@ pub const STARTERS: [(&str, &str); 5] = [
     ("excel.toml", include_str!("../chords/excel.toml")),
 ];
 
-/// Where chord files live when `--chords` isn't given: a `chords` folder in the current folder
-/// (portable zip, development) wins; otherwise the per-user folder, e.g. `%APPDATA%\chord\chords`.
 /// Remote desktop and VM windows: their own machine runs its own chord, and they sync Caps Lock
 /// back to this one, so chord here must leave Caps alone while they are in front.
 pub fn remote_client(exe: &str) -> bool {
@@ -246,6 +244,8 @@ pub fn remote_client(exe: &str) -> bool {
     ["mstsc.exe", "msrdc.exe", "vmconnect.exe", "vmware.exe", "vmplayer.exe", "virtualboxvm.exe"].contains(&exe)
 }
 
+/// Where chord files live when `--chords` isn't given: a `chords` folder in the current folder
+/// (portable zip, development) wins; otherwise the per-user folder, e.g. `%APPDATA%\chord\chords`.
 pub fn default_dir(local: &std::path::Path, per_user: Option<std::path::PathBuf>) -> std::path::PathBuf {
     match per_user {
         Some(dir) if !local.is_dir() => dir,
