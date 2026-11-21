@@ -2,6 +2,13 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/).
 
+## [0.6.1] - 2026-11-21
+
+### Fixed
+
+- A held `repeat` chord (`j` `k` `h` `l`) or a pointer glide with the arrow keys stops once its key is no longer down, even when the release never reached chord (Windows locked, an admin window in front). Before, it kept scrolling or moving the pointer until the next chord key.
+- Start with Windows keeps a chords folder whose path ends in `\` (such as `D:\`). Before, chord started at sign-in with no chord files.
+
 ## [0.6.0] - 2026-11-21
 
 ### Added
