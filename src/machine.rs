@@ -424,10 +424,6 @@ fn is_modifier(vk: u16) -> bool {
     matches!(vk, 0xA0..=0xA5 | VK_LWIN | VK_RWIN)
 }
 
-/// The chord to try after `buffer` grew by one letter. `ran` is (typed letters, chord) of the last
-/// `repeat` chord run: one more letter re-runs that chord with its last letter swapped for the new
-/// one, so `j j k` scrolls down, down, up instead of looking up `jj` and `jjk`. A full buffer
-/// drops its first letter for the new one, so `typed` minus its first letter counts too.
 /// The highlighted row after Down (`down`) or Up in a list of `len` rows; it stops at either end.
 pub fn step(selected: Option<usize>, len: usize, down: bool) -> Option<usize> {
     let last = len.checked_sub(1)?;
@@ -447,6 +443,10 @@ pub fn first_shown(selected: Option<usize>, room: usize) -> usize {
     }
 }
 
+/// The chord to try after `buffer` grew by one letter. `ran` is (typed letters, chord) of the last
+/// `repeat` chord run: one more letter re-runs that chord with its last letter swapped for the new
+/// one, so `j j k` scrolls down, down, up instead of looking up `jj` and `jjk`. A full buffer
+/// drops its first letter for the new one, so `typed` minus its first letter counts too.
 pub fn repeat_candidate(ran: Option<(&str, &str)>, buffer: &str) -> String {
     if let (Some((typed, chord)), Some(letter)) = (ran, buffer.chars().last()) {
         let kept = &buffer[..buffer.len() - letter.len_utf8()];
@@ -460,7 +460,6 @@ pub fn repeat_candidate(ran: Option<(&str, &str)>, buffer: &str) -> String {
     buffer.to_string()
 }
 
-/// Every character `char_of` can produce; chord names in files must use only these.
 /// Effects (Caps Lock sends, chord runs) within `STORM_WINDOW_MS` that mean a feedback loop, not a
 /// person: like AutoHotkey's #MaxHotkeysPerInterval. A person tops out near 10 per second.
 pub const STORM_MAX: usize = 30;
@@ -482,6 +481,7 @@ impl Storm {
     }
 }
 
+/// Every character `char_of` can produce; chord names in files must use only these.
 pub const CHORD_CHARS: &str = "abcdefghijklmnopqrstuvwxyz0123456789;=,-./[]'";
 
 /// Chord letters are matched by virtual key (US layout), never translated, so IMEs and dead keys can't interfere.

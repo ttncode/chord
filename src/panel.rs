@@ -588,7 +588,6 @@ fn common_prefix(a: &str, b: &str) -> usize {
     a.char_indices().zip(b.chars()).take_while(|((_, x), y)| x == y).last().map_or(0, |((i, c), _)| i + c.len_utf8())
 }
 
-/// Small accent-blue tags with white letters (the already-typed letters dimmed) at each target's corner.
 /// The size each label in `labels` is drawn at over `area`, as `render_hints` draws it.
 pub fn hint_sizes(area: RECT, labels: &[String]) -> Vec<(i32, i32)> {
     let s = scale(unsafe { MonitorFromRect(&area, MONITOR_DEFAULTTONEAREST) });
@@ -599,6 +598,7 @@ pub fn hint_sizes(area: RECT, labels: &[String]) -> Vec<(i32, i32)> {
     labels.iter().map(|l| (canvas.measure(&l.to_uppercase(), font) + 2 * side, height)).collect()
 }
 
+/// Small accent-blue tags with white letters (the already-typed letters dimmed) at each target's corner.
 fn render_hints() -> Option<(Canvas, POINT)> {
     let (area, labels, typed) = HINTS.lock().unwrap_or_else(|e| e.into_inner()).clone();
     let s = scale(unsafe { MonitorFromRect(&area, MONITOR_DEFAULTTONEAREST) });
