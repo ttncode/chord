@@ -47,7 +47,7 @@ use crate::panel;
 use crate::layout::Layout;
 use crate::window;
 use crate::keys::{Key, parse_shortcut};
-use crate::machine::{Effect, Machine, STORM_MAX, STORM_WINDOW_MS, Storm, VK_CAPITAL, VK_SPACE, repeat_candidate, step, glide_direction, glide_speed};
+use crate::machine::{Effect, Machine, STORM_MAX, STORM_WINDOW_MS, Storm, VK_CAPITAL, VK_DOWN, VK_LEFT, VK_RIGHT, VK_SPACE, VK_UP, repeat_candidate, step, glide_direction, glide_speed};
 
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 const CAPS: [Key; 1] = [Key { vk: VK_CAPITAL, extended: false }];
@@ -378,7 +378,15 @@ pub fn run(chords_dir: PathBuf) {
     // Open search: its text, the highlighted row, and the window in front when it opened.
     let mut search: Option<(String, Option<usize>, HWND)> = None;
     let mut glide: Option<Glide> = None;
+    let pressed = |vk: u16| unsafe { GetAsyncKeyState(i32::from(vk)) } < 0;
     loop {
+        // A release can miss the hook (lock, an admin window in front): then no effect ends these.
+        if held.is_some() && !pressed(VK_SPACE) {
+            held = None;
+        }
+        if glide.is_some() && ![VK_LEFT, VK_UP, VK_RIGHT, VK_DOWN].into_iter().any(pressed) {
+            glide = None;
+        }
         let effect = match (&mut held, &mut glide) {
             (None, Some(g)) => match rx.recv_timeout(GLIDE_EVERY) {
                 Ok(effect) => effect,
