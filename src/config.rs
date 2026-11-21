@@ -206,6 +206,22 @@ pub fn available(files: &[ChordFile], exe: &str, title: &str) -> Vec<(String, St
         .collect()
 }
 
+/// The chords and groups the panel lists while `buffer` is typed. A pattern chord compares only its
+/// literal part before the first `(`. A group stays listed until its whole prefix is typed: by then
+/// its chords are the rows.
+pub fn listed(chords: &[(String, String)], groups: &[(String, String)], buffer: &str) -> (Vec<(String, String)>, Vec<(String, String)>) {
+    let rows = chords
+        .iter()
+        .filter(|(chord, _)| match chord.split_once('(') {
+            Some((prefix, _)) => prefix.starts_with(buffer) || buffer.starts_with(prefix),
+            None => chord.starts_with(buffer),
+        })
+        .cloned()
+        .collect();
+    let groups = groups.iter().filter(|(prefix, _)| prefix.starts_with(buffer) && prefix != buffer).cloned().collect();
+    (rows, groups)
+}
+
 /// The `(chord, name)` rows where every word of `query` is in the chord or its name, ignoring case.
 pub fn search(chords: &[(String, String)], query: &str) -> Vec<(String, String)> {
     let words: Vec<String> = query.split_whitespace().map(str::to_lowercase).collect();
@@ -451,6 +467,19 @@ mod tests {
         assert_eq!(keys(""), ["gd", "/ms"]);
         assert!(keys("zzz").is_empty());
     }
+    #[test]
+    fn panel_lists_what_the_typed_letters_can_still_become() {
+        let row = |key: &str| (key.to_string(), String::new());
+        let chords = [row("gd"), row("gr"), row("w(\\d+)"), row("x")];
+        let groups = [row("g"), row("w")];
+        assert_eq!(listed(&chords, &groups, ""), (chords.to_vec(), groups.to_vec()));
+        // A group's whole prefix typed: its chords are the rows, the group itself goes.
+        assert_eq!(listed(&chords, &groups, "g"), (vec![row("gd"), row("gr")], vec![]));
+        // A pattern chord stays while the typed letters run past its literal part.
+        assert_eq!(listed(&chords, &groups, "w12"), (vec![row("w(\\d+)")], vec![]));
+        assert_eq!(listed(&chords, &groups, "q"), (vec![], vec![]));
+    }
+
     #[test]
     fn parses_all_action_kinds() {
         let f = ok(r#"
