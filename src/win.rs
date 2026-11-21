@@ -126,18 +126,12 @@ impl Session {
     }
 
     fn view(&self, buffer: &str) -> panel::View {
-        let matching = self.chords.iter().filter(|(chord, _)| match chord.split_once('(') {
-            // Pattern chords: compare only the literal part before the first `(`.
-            Some((prefix, _)) => prefix.starts_with(buffer) || buffer.starts_with(prefix),
-            None => chord.starts_with(buffer),
-        });
-        // A group stays listed until its whole prefix is typed: by then its chords are the rows.
-        let groups = self.groups.iter().filter(|(prefix, _)| prefix.starts_with(buffer) && prefix != buffer);
+        let (rows, groups) = config::listed(&self.chords, &self.groups, buffer);
         panel::View {
             app: self.app.clone(),
             typed: buffer.to_string(),
-            rows: matching.cloned().collect(),
-            groups: groups.cloned().collect(),
+            rows,
+            groups,
             search: false,
             selected: None,
         }
