@@ -2,6 +2,16 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/).
 
+## [0.7.3] - 2026-11-25
+
+### Fixed
+
+- A window carried to another desktop and back in one chord (`/dl` then `/dh`) comes to the front at once. Since 0.7.2 it waited a second and was left without focus.
+
+### Note
+
+- `/dh` and `/dl` only switch desktops if your chord file predates 0.5.1: chord never updates the chord files in `%APPDATA%\chord\chords`. Replace those two lines with the ones in the current `chords\global.toml` (`window = "previous-desktop"` / `"next-desktop"`).
+
 ## [0.7.2] - 2026-11-25
 
 ### Fixed
