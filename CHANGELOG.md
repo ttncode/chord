@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/).
 
+## [0.7.0] - 2026-11-25
+
+### Added
+
+- `/mo` hovers with labels (`hints = "hover"`): pick a label and the pointer moves onto that element without clicking, so its hover state, tooltip or hover menu shows.
+
 ## [0.6.1] - 2026-11-21
 
 ### Fixed
