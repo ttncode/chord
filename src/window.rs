@@ -342,17 +342,25 @@ fn movable_front() -> Option<HWND> {
     (!hwnd.is_invalid() && !shell).then_some(hwnd)
 }
 
-/// The window being carried to another desktop (hidden), when the desktop last switched, and the
-/// desktop it was picked up from.
-static CARRIED: Mutex<Option<(isize, Instant, Option<GUID>)>> = Mutex::new(None);
+/// The window being carried to another desktop, hidden.
+struct Carried {
+    hwnd: isize,
+    switched_at: Instant,
+    /// The desktop it was picked up from, if Windows says.
+    from: Option<GUID>,
+    /// Desktops moved right (negative: left) since it was picked up.
+    steps: i32,
+}
+
+static CARRIED: Mutex<Option<Carried>> = Mutex::new(None);
 /// How long a desktop switch takes to finish; a window shown sooner lands on the old desktop.
 const SWITCH_SETTLE: Duration = Duration::from_millis(300);
 
-/// Picks up the window in front (hides it) and runs `switch` to change the desktop. Windows shows a
-/// window that reappears on the desktop in view, so `put_down` drops it there; until then more
-/// switches carry it along without a flicker per step. Windows' own move API refuses other apps'
-/// windows, and the internal one changes with every Windows build.
-pub fn move_to_desktop(switch: impl FnOnce()) {
+/// Picks up the window in front (hides it) and runs `switch`, which moves `step` desktops right
+/// (negative: left). Windows shows a window that reappears on the desktop in view, so `put_down`
+/// drops it there; until then more switches carry it along without a flicker per step. Windows' own
+/// move API refuses other apps' windows, and the internal one changes with every Windows build.
+pub fn move_to_desktop(step: i32, switch: impl FnOnce()) {
     let mut carried = CARRIED.lock().unwrap_or_else(|e| e.into_inner());
     if carried.is_none() {
         let Some(hwnd) = movable_front() else { return };
@@ -361,35 +369,45 @@ pub fn move_to_desktop(switch: impl FnOnce()) {
         if unsafe { IsWindowVisible(hwnd) }.as_bool() {
             say!("  ! could not pick up the window in front (an app running as administrator?)");
         } else {
-            *carried = Some((hwnd.0 as isize, Instant::now(), from));
+            *carried = Some(Carried { hwnd: hwnd.0 as isize, switched_at: Instant::now(), from, steps: 0 });
         }
     }
     switch();
-    if let Some((_, at, _)) = carried.as_mut() {
-        *at = Instant::now();
+    if let Some(c) = carried.as_mut() {
+        c.switched_at = Instant::now();
+        c.steps += step;
     }
 }
 
 /// Shows the carried window on the desktop in view and brings it to the front. Must run whenever
 /// chord mode ends: until then the window is hidden, with no taskbar button.
 pub fn put_down() {
-    let Some((hwnd, at, from)) = CARRIED.lock().unwrap_or_else(|e| e.into_inner()).take() else { return };
-    std::thread::sleep(SWITCH_SETTLE.saturating_sub(at.elapsed()));
-    let hwnd = HWND(hwnd as *mut _);
+    let Some(carried) = CARRIED.lock().unwrap_or_else(|e| e.into_inner()).take() else { return };
+    std::thread::sleep(SWITCH_SETTLE.saturating_sub(carried.switched_at.elapsed()));
+    let hwnd = HWND(carried.hwnd as *mut _);
     let _ = unsafe { ShowWindow(hwnd, SW_SHOW) };
-    // Windows 11 moves a re-shown window to the desktop in view a moment after `ShowWindow`;
-    // activating it sooner sends it back to the desktop it was hidden on.
-    let deadline = Instant::now() + Duration::from_secs(1);
-    let mut now_on = desktop_of(hwnd);
-    while from.is_some() && now_on == from && Instant::now() < deadline {
-        std::thread::sleep(Duration::from_millis(20));
-        now_on = desktop_of(hwnd);
-    }
-    if from.is_some() && now_on == from {
+    if carried.steps != 0 && !wait_until_moved(hwnd, carried.from) {
+        // The last desktop has no next one, so this also happens at either end.
         say!("  ! the window is still on the desktop it was picked up from");
-        return;
     }
     bring_to_front(hwnd);
+}
+
+/// Windows 11 moves a re-shown window to the desktop in view a moment after `ShowWindow`, and
+/// activating it sooner sends it back. Waits up to 1 second for `hwnd` to leave `from`; false if it
+/// did not. True when Windows doesn't say where it is.
+fn wait_until_moved(hwnd: HWND, from: Option<GUID>) -> bool {
+    let Some(from) = from else { return true };
+    let deadline = Instant::now() + Duration::from_secs(1);
+    loop {
+        if desktop_of(hwnd).is_none_or(|now_on| now_on != from) {
+            return true;
+        }
+        if Instant::now() >= deadline {
+            return false;
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    }
 }
 
 /// The virtual desktop `hwnd` is on, if Windows says.

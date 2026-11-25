@@ -678,8 +678,8 @@ fn run_action(action: &Action) {
             window::mouse(*action)
         }
         Action::Window(layout @ (Layout::PreviousDesktop | Layout::NextDesktop)) => {
-            let keys = if *layout == Layout::NextDesktop { "win+ctrl+right" } else { "win+ctrl+left" };
-            window::move_to_desktop(|| send_combo(&parse_shortcut(keys).expect("built-in shortcut").remove(0)));
+            let (step, keys) = if *layout == Layout::NextDesktop { (1, "win+ctrl+right") } else { (-1, "win+ctrl+left") };
+            window::move_to_desktop(step, || send_combo(&parse_shortcut(keys).expect("built-in shortcut").remove(0)));
         }
         Action::Window(Layout::Move) => window::start_move(),
         Action::Window(layout) => window::snap(*layout),
