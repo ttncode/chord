@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/).
 
+## [0.7.1] - 2026-11-25
+
+### Fixed
+
+- `/dh` and `/dl` take the window in front along to the previous / next desktop on Windows 11. Before, only the desktop switched and the window stayed behind.
+
 ## [0.7.0] - 2026-11-25
 
 ### Added
