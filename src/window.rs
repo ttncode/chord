@@ -371,7 +371,29 @@ pub fn put_down() {
     std::thread::sleep(SWITCH_SETTLE.saturating_sub(at.elapsed()));
     let hwnd = HWND(hwnd as *mut _);
     let _ = unsafe { ShowWindow(hwnd, SW_SHOW) };
+    wait_until_on_current_desktop(hwnd);
     bring_to_front(hwnd);
+}
+
+/// Windows 11 assigns a shown window to a desktop a moment after `ShowWindow`; activating it sooner
+/// sends it back to the desktop it was hidden on.
+fn wait_until_on_current_desktop(hwnd: HWND) {
+    use windows::Win32::System::Com::{CLSCTX_ALL, CoCreateInstance};
+    use windows::Win32::UI::Shell::{IVirtualDesktopManager, VirtualDesktopManager};
+    let manager: IVirtualDesktopManager = unsafe {
+        let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
+        match CoCreateInstance(&VirtualDesktopManager, None, CLSCTX_ALL) {
+            Ok(manager) => manager,
+            Err(_) => return,
+        }
+    };
+    let deadline = Instant::now() + Duration::from_secs(1);
+    while Instant::now() < deadline {
+        if unsafe { manager.IsWindowOnCurrentVirtualDesktop(hwnd) }.is_ok_and(|on| on.as_bool()) {
+            return;
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    }
 }
 
 fn outer_rect(hwnd: HWND) -> layout::Rect {
