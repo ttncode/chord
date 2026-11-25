@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/).
 
+## [0.7.2] - 2026-11-25
+
+### Fixed
+
+- `/dh` and `/dl` on Windows 11, second try: chord waits until Windows has moved the window to the new desktop before bringing it to the front. Run from a terminal, chord says when it could not pick up the window in front or the window did not move.
+
 ## [0.7.1] - 2026-11-25
 
 ### Fixed
