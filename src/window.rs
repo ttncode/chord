@@ -170,7 +170,7 @@ pub fn mouse(action: Mouse) {
             CARRYING.store(down, Ordering::Relaxed);
             send_mouse(&[if down { MOUSEEVENTF_LEFTDOWN } else { MOUSEEVENTF_LEFTUP }], 0);
         }
-        Mouse::Point => {}
+        Mouse::Point | Mouse::Hover => {}
     }
 }
 

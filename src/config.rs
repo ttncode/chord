@@ -43,6 +43,8 @@ pub enum Mouse {
     Forward,
     /// Only moves the pointer: what `hints = "scroll"` does with the picked area.
     Point,
+    /// Only moves the pointer onto the picked element, so it shows its hover state or tooltip.
+    Hover,
     /// Presses the left button and keeps it down; run again to let go (drag and drop).
     Drag,
 }
@@ -396,7 +398,8 @@ fn parse_chord(key: &str, value: &toml::Value) -> Result<(Chord, Option<regex::R
                     "middle-click" => Mouse::MiddleClick,
                     "scroll" => Mouse::Point,
                     "drag" => Mouse::Drag,
-                    other => return Err(format!("hints \"{other}\" must be click, right-click, double-click, middle-click, scroll or drag")),
+                    "hover" => Mouse::Hover,
+                    other => return Err(format!("hints \"{other}\" must be click, right-click, double-click, middle-click, scroll, drag or hover")),
                 };
                 actions.push(Action::Hints(Hint { click, taskbar: false }));
             }
@@ -742,6 +745,8 @@ mod tests {
         assert_eq!(f.chords["/ms"].action, Action::Hints(Hint { click: Mouse::Point, taskbar: false }));
         let f = global(r#""=" = { name = "Drag", hints = "drag" }"#);
         assert_eq!(f.chords["="].action, Action::Hints(Hint { click: Mouse::Drag, taskbar: false }));
+        let f = global(r#""/mo" = { name = "Hover", hints = "hover" }"#);
+        assert_eq!(f.chords["/mo"].action, Action::Hints(Hint { click: Mouse::Hover, taskbar: false }));
     }
 
     #[test]
