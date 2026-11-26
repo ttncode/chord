@@ -26,6 +26,7 @@ use windows::Win32::System::Console::{ATTACH_PARENT_PROCESS, AttachConsole, STD_
 use windows::Win32::UI::WindowsAndMessaging::{MB_ICONINFORMATION, MB_OK, MessageBoxW};
 use windows::Win32::UI::HiDpi::{DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2, SetProcessDpiAwarenessContext};
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
+use windows::Win32::System::SystemInformation::GetTickCount;
 use windows::Win32::System::Threading::{
     CreateMutexW, GetCurrentThread, GetCurrentThreadId, OpenProcess, PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION,
     QueryFullProcessImageNameW, SetThreadPriority, THREAD_PRIORITY_TIME_CRITICAL,
@@ -47,7 +48,7 @@ use crate::panel;
 use crate::layout::Layout;
 use crate::window;
 use crate::keys::{Key, parse_shortcut};
-use crate::machine::{Effect, Machine, STORM_MAX, STORM_WINDOW_MS, Storm, VK_CAPITAL, VK_DOWN, VK_LEFT, VK_RIGHT, VK_SPACE, VK_UP, repeat_candidate, step, glide_direction, glide_speed};
+use crate::machine::{Effect, Machine, STORM_MAX, STALE_MS, STORM_WINDOW_MS, Storm, VK_CAPITAL, VK_SPACE, repeat_candidate, step, glide_direction, glide_speed};
 
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 const CAPS: [Key; 1] = [Key { vk: VK_CAPITAL, extended: false }];
@@ -60,6 +61,8 @@ static HOOK: AtomicIsize = AtomicIsize::new(0);
 static HOOK_THREAD: AtomicU32 = AtomicU32::new(0);
 /// Set when a feedback loop is detected: from then on the hook passes every key untouched.
 static STOPPED: AtomicBool = AtomicBool::new(false);
+/// Tick count (KBDLLHOOKSTRUCT.time) of the last physical key event the hook saw, auto-repeats included.
+static LAST_KEY_MS: AtomicU32 = AtomicU32::new(0);
 const WM_RESET_HOOK: u32 = WM_APP + 10;
 const REINSTALL_EVERY_MS: u32 = 5 * 60 * 1000;
 
@@ -378,13 +381,12 @@ pub fn run(chords_dir: PathBuf) {
     // Open search: its text, the highlighted row, and the window in front when it opened.
     let mut search: Option<(String, Option<usize>, HWND)> = None;
     let mut glide: Option<Glide> = None;
-    let pressed = |vk: u16| unsafe { GetAsyncKeyState(i32::from(vk)) } < 0;
     loop {
         // A release can miss the hook (lock, an admin window in front): then no effect ends these.
-        if held.is_some() && !pressed(VK_SPACE) {
+        // A held key auto-repeats, so a silent keyboard means it was let go. GetAsyncKeyState can't
+        // tell: keys the hook swallows (Space, arrows) never reach it and always read as up.
+        if unsafe { GetTickCount() }.wrapping_sub(LAST_KEY_MS.load(Ordering::Relaxed)) > STALE_MS {
             held = None;
-        }
-        if glide.is_some() && ![VK_LEFT, VK_UP, VK_RIGHT, VK_DOWN].into_iter().any(pressed) {
             glide = None;
         }
         let effect = match (&mut held, &mut glide) {
@@ -795,6 +797,7 @@ unsafe extern "system" fn hook(code: i32, wparam: WPARAM, lparam: LPARAM) -> LRE
             && ((event.flags & LLKHF_INJECTED).0 != 0
                 || (down && exe_of(unsafe { GetForegroundWindow() }).is_some_and(|e| config::remote_client(&e))));
         if event.dwExtraInfo != TAG && !leave_caps {
+            LAST_KEY_MS.store(event.time, Ordering::Relaxed);
             // A panic must not unwind into Windows; on panic the key just passes through.
             let decision = catch_unwind(AssertUnwindSafe(|| {
                 MACHINE.with_borrow_mut(|m| {

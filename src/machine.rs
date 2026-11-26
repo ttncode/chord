@@ -118,7 +118,7 @@ pub struct Machine {
 }
 
 /// A held key that was pressed last auto-repeats well within this; longer silence means its release was lost.
-const STALE_MS: u32 = 1_500;
+pub const STALE_MS: u32 = 1_500;
 /// No key at all for this long in chord mode: assume Space's release was lost after typing.
 const IDLE_MS: u32 = 15_000;
 const MODIFIER_KEYS: [u16; 8] = [0xA0, 0xA1, VK_LCONTROL, VK_RCONTROL, VK_LMENU, VK_RMENU, VK_LWIN, VK_RWIN];
