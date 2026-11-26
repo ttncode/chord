@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/).
 
+## [0.7.4] - 2026-11-26
+
+### Fixed
+
+- Arrow keys in chord mode glide the mouse pointer again, and holding the last letter of a `repeat` chord (`j`, `k`) keeps scrolling again. Since 0.6.1 both stopped right away: chord asked Windows whether the key was still down, and Windows always says no for keys that chord swallows. Chord now stops them only when the keyboard goes silent for 1.5 seconds. A held key auto-repeats, so silence means its release was lost.
+
 ## [0.7.3] - 2026-11-25
 
 ### Fixed
