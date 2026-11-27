@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/).
 
+## [0.7.5] - 2026-11-27
+
+### Fixed
+
+- Labels reach the page again when a cookie banner is open. A banner marked as a dialog (Smartsheet's sign-up page) counted as a modal, so only its buttons got labels. Now a dialog hides the page only when it is modal or holds the keyboard focus. `--debug-hints` lists every open dialog and whether it is modal.
+
 ## [0.7.4] - 2026-11-26
 
 ### Fixed
