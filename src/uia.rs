@@ -8,7 +8,7 @@ use windows::Win32::UI::Accessibility::{
     TreeScope_Descendants, TreeScope_Subtree, UIA_BoundingRectanglePropertyId, UIA_IsEnabledPropertyId,
     UIA_IsExpandCollapsePatternAvailablePropertyId, UIA_IsInvokePatternAvailablePropertyId,
     UIA_IsKeyboardFocusablePropertyId, UIA_IsOffscreenPropertyId, UIA_IsSelectionItemPatternAvailablePropertyId,
-    UIA_IsDialogPropertyId, UIA_IsTogglePatternAvailablePropertyId, UIA_IsScrollPatternAvailablePropertyId,
+    UIA_IsDialogPropertyId, UIA_WindowIsModalPropertyId, UIA_IsTogglePatternAvailablePropertyId, UIA_IsScrollPatternAvailablePropertyId,
     UIA_ScrollVerticallyScrollablePropertyId, UIA_ScrollHorizontallyScrollablePropertyId, UIA_ScrollVerticalViewSizePropertyId, UIA_ScrollHorizontalViewSizePropertyId,
     UIA_LandmarkTypePropertyId, UIA_CustomLandmarkTypeId, UIA_MainLandmarkTypeId, UIA_NavigationLandmarkTypeId, UIA_PROPERTY_ID, UIA_CONTROLTYPE_ID,
     UIA_ButtonControlTypeId, UIA_SplitButtonControlTypeId, UIA_HyperlinkControlTypeId, UIA_MenuItemControlTypeId,
@@ -157,9 +157,11 @@ pub fn clickable_rects(hwnd: HWND) -> Result<Vec<(Rect, Kind)>> {
         // An open modal (a web dialog, or one an app draws inside its window): only its contents count.
         // The one on top holds the keyboard focus (modals trap it); after it, later in the tree is
         // usually higher. Closed ones can linger in the tree empty, so a dialog wins only when
-        // something in it is clickable.
+        // something in it is clickable. Non-modal dialogs (cookie banners: aria-modal="false") sit
+        // beside the page, so unless they hold the focus they must not hide it (Smartsheet sign-up).
         let open_dialog = uia.CreateAndCondition(&is(UIA_IsDialogPropertyId, true)?, &is(UIA_IsOffscreenPropertyId, false)?)?;
-        let found_dialogs = root.FindAll(TreeScope_Descendants, &open_dialog)?;
+        let modal_dialog = uia.CreateAndCondition(&open_dialog, &is(UIA_WindowIsModalPropertyId, true)?)?;
+        let found_dialogs = root.FindAll(TreeScope_Descendants, &modal_dialog)?;
         let mut dialogs: Vec<IUIAutomationElement> =
             (0..found_dialogs.Length()?).rev().filter_map(|i| found_dialogs.GetElement(i).ok()).collect();
         let focused = focused_dialog(&uia);
@@ -175,6 +177,17 @@ pub fn clickable_rects(hwnd: HWND) -> Result<Vec<(Rect, Kind)>> {
                 let is_focused = focused.as_ref().is_some_and(|f| uia.CompareElements(f, d).is_ok_and(|b| b.as_bool()));
                 dialog_log += &format!(
                     "dialog {:?} {:?} focused={is_focused} on_top={top}\n",
+                    (r.left, r.top, r.right, r.bottom),
+                    d.CurrentName().map(|n| n.to_string()).unwrap_or_default()
+                );
+            }
+            let every_open = root.FindAll(TreeScope_Descendants, &open_dialog)?;
+            for i in 0..every_open.Length()? {
+                let Ok(d) = every_open.GetElement(i) else { continue };
+                let r = d.CurrentBoundingRectangle().unwrap_or_default();
+                let modal = d.GetCurrentPropertyValue(UIA_WindowIsModalPropertyId).map(|v| v.to_string()).unwrap_or_default();
+                dialog_log += &format!(
+                    "  any open dialog {:?} {:?} modal={modal}\n",
                     (r.left, r.top, r.right, r.bottom),
                     d.CurrentName().map(|n| n.to_string()).unwrap_or_default()
                 );
