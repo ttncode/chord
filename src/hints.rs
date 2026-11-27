@@ -32,8 +32,12 @@ pub const MAIN: f64 = -1.0;
 pub enum Kind {
     /// Clickable, but no known control type (custom, text, image).
     Generic,
-    /// Link, file row, tab…
+    /// File row, tab…
     Control,
+    /// A link: like `Control`, but labelled on its tallest text when that sits below its top edge.
+    Link,
+    /// Plain text, never labelled: only tells where a link's title is.
+    Text,
     /// A button: one inside another control (a tab's close button) still gets a label.
     Button,
     /// A scroll bar: neither it nor its arrows get a label, as the scroll chords do its job.
@@ -58,6 +62,7 @@ pub fn targets(elements: Vec<(Rect, Kind)>) -> Vec<Rect> {
         (a.0 - b.0).abs() <= SAME && (a.1 - b.1).abs() <= SAME && (a.2 - b.2).abs() <= SAME && (a.3 - b.3).abs() <= SAME
     };
     let contains = |a: Rect, b: Rect| a.0 <= b.0 && a.1 <= b.1 && a.2 >= b.2 && a.3 >= b.3 && !same(a, b);
+    let (texts, elements): (Vec<(Rect, Kind)>, Vec<(Rect, Kind)>) = elements.into_iter().partition(|&(_, k)| k == Kind::Text);
     let elements: Vec<(Rect, Kind)> = elements.into_iter().filter(|(r, _)| r.2 - r.0 >= MIN_SIDE && r.3 - r.1 >= MIN_SIDE).collect();
     let in_scroll_bar = |r: Rect| elements.iter().any(|&(bar, k)| k == Kind::ScrollBar && (same(bar, r) || contains(bar, r)));
     let elements: Vec<(Rect, Kind)> = elements.iter().copied().filter(|&(r, _)| !in_scroll_bar(r)).collect();
@@ -88,6 +93,12 @@ pub fn targets(elements: Vec<(Rect, Kind)>) -> Vec<Rect> {
             // The click goes to the middle: keep it on the name, as a row can run past the visible
             // columns (Explorer's details view) or far beyond its text.
             r.2 = r.2.min(r.0 + ITEM_WIDTH_PER_HEIGHT * (r.3 - r.1));
+        }
+        if kind == Kind::Link {
+            let title = texts.iter().map(|&(t, _)| t).filter(|&t| contains(r, t)).max_by_key(|t| (t.3 - t.1, t.1));
+            if let Some(title) = title.filter(|t| t.1 - r.1 > SAME) {
+                r = title;
+            }
         }
         // A button on the edge of an item (Discord's Remove on an attachment card) is not a part of it.
         let overlaps = |k: Rect, k_kind: Kind| {
@@ -326,6 +337,21 @@ mod tests {
         assert_eq!(targets(vec![cell((277, 790, 1844, 838)), cell(name), generic(icon), cell((1340, 790, 1555, 838))]), vec![name, icon]);
         // A lone cell (a column header) keeps its own label.
         assert_eq!(targets(vec![cell(size)]), vec![size]);
+    }
+
+    #[test]
+    fn a_link_whose_title_sits_below_its_top_is_labelled_on_the_title() {
+        // Google: a result's link starts at the favicon and holds the site name, the URL and the title.
+        let text = |r: Rect| (r, Kind::Text);
+        let (link, title, about) = ((252, 236, 788, 301), (252, 270, 788, 301), (421, 252, 453, 271));
+        let site = (252, 240, 330, 256);
+        assert_eq!(targets(vec![(link, Kind::Link), text(site), text(title), button(about)]), vec![about, title]);
+        // A link whose text starts at its top keeps its own box, and text never gets a label.
+        let (plain, words) = ((253, 372, 343, 393), (253, 371, 785, 395));
+        assert_eq!(targets(vec![(plain, Kind::Link), text(words)]), vec![plain]);
+        // Text does not make a generic box around it give way.
+        let card = (0, 0, 200, 30);
+        assert_eq!(targets(vec![generic(card), text((10, 5, 100, 25))]), vec![card]);
     }
 
     #[test]

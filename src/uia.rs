@@ -18,7 +18,7 @@ use windows::Win32::UI::Accessibility::{
     UIA_DocumentControlTypeId, UIA_HeaderControlTypeId, UIA_ListControlTypeId,
     UIA_MenuBarControlTypeId, UIA_PaneControlTypeId, UIA_ScrollBarControlTypeId, UIA_StatusBarControlTypeId,
     UIA_TabControlTypeId, UIA_TableControlTypeId, UIA_TitleBarControlTypeId, UIA_ToolBarControlTypeId,
-    UIA_TreeControlTypeId, UIA_WindowControlTypeId,
+    UIA_TreeControlTypeId, UIA_WindowControlTypeId, UIA_TextControlTypeId,
 };
 use windows::Win32::Foundation::{BOOL, LPARAM, WPARAM};
 use windows::Win32::UI::WindowsAndMessaging::{
@@ -52,7 +52,7 @@ const CONTROLS: [UIA_CONTROLTYPE_ID; 13] = [
 ];
 
 /// Rectangles (physical screen pixels) of clickable elements in `hwnd` that no other window covers,
-/// each with what kind of control it is.
+/// each with what kind of control it is, plus plain text (`Kind::Text`, never labelled).
 pub fn clickable_rects(hwnd: HWND) -> Result<Vec<(Rect, Kind)>> {
     unsafe {
         // Safe to repeat: later calls on this thread just return S_FALSE.
@@ -67,18 +67,24 @@ pub fn clickable_rects(hwnd: HWND) -> Result<Vec<(Rect, Kind)>> {
         cache.AddProperty(UIA_BoundingRectanglePropertyId)?;
         cache.AddProperty(UIA_ControlTypePropertyId)?;
         cache.AddProperty(UIA_NamePropertyId)?;
+        let clicks = [
+            UIA_IsKeyboardFocusablePropertyId,
+            UIA_IsInvokePatternAvailablePropertyId,
+            UIA_IsTogglePatternAvailablePropertyId,
+            UIA_IsSelectionItemPatternAvailablePropertyId,
+            UIA_IsExpandCollapsePatternAvailablePropertyId,
+        ];
+        // Cached to tell plain text (a link's title) from clickable text.
+        for id in clicks {
+            cache.AddProperty(id)?;
+        }
         cache.SetAutomationElementMode(AutomationElementMode_None)?;
 
         let is = |id: UIA_PROPERTY_ID, value: bool| -> Result<IUIAutomationCondition> {
             uia.CreatePropertyCondition(id, &VARIANT::from(value))
         };
-        let mut clickable = is(UIA_IsKeyboardFocusablePropertyId, true)?;
-        for id in [
-            UIA_IsInvokePatternAvailablePropertyId,
-            UIA_IsTogglePatternAvailablePropertyId,
-            UIA_IsSelectionItemPatternAvailablePropertyId,
-            UIA_IsExpandCollapsePatternAvailablePropertyId,
-        ] {
+        let mut clickable = uia.CreateFalseCondition()?;
+        for id in clicks {
             clickable = uia.CreateOrCondition(&clickable, &is(id, true)?)?;
         }
         // Apps seen only through the old accessibility layer (MSAA) offer none of those patterns:
@@ -114,7 +120,9 @@ pub fn clickable_rects(hwnd: HWND) -> Result<Vec<(Rect, Kind)>> {
         // Scroll bars come along so their arrows and track, which are buttons, can be left out.
         let scroll_bar = uia.CreatePropertyCondition(UIA_ControlTypePropertyId, &VARIANT::from(UIA_ScrollBarControlTypeId.0))?;
         let target = uia.CreateAndCondition(&clickable, &uia.CreateNotCondition(&container)?)?;
-        let condition = uia.CreateAndCondition(&visible, &uia.CreateOrCondition(&target, &scroll_bar)?)?;
+        let text = uia.CreatePropertyCondition(UIA_ControlTypePropertyId, &VARIANT::from(UIA_TextControlTypeId.0))?;
+        let wanted = uia.CreateOrCondition(&uia.CreateOrCondition(&target, &scroll_bar)?, &text)?;
+        let condition = uia.CreateAndCondition(&visible, &wanted)?;
 
         let app = crate::window::pid_of(hwnd);
         let debug = DEBUG.load(Ordering::Relaxed);
@@ -143,6 +151,10 @@ pub fn clickable_rects(hwnd: HWND) -> Result<Vec<(Rect, Kind)>> {
                         Kind::Cell
                     } else if kind == UIA_ScrollBarControlTypeId {
                         Kind::ScrollBar
+                    } else if kind == UIA_HyperlinkControlTypeId {
+                        Kind::Link
+                    } else if kind == UIA_TextControlTypeId && !clicks.iter().any(|&id| cached_true(&element, id)) {
+                        Kind::Text
                     } else if CONTROLS.contains(&kind) {
                         Kind::Control
                     } else {
@@ -465,6 +477,10 @@ fn every_element(uia: &IUIAutomation, root: &IUIAutomationElement) -> Result<Str
 fn shows(hwnd: HWND, app: u32, c: POINT) -> bool {
     let at = unsafe { WindowFromPoint(c) };
     crate::window::pid_of(at) == app || unsafe { GetAncestor(at, GA_ROOT) } == hwnd
+}
+
+fn cached_true(element: &IUIAutomationElement, id: UIA_PROPERTY_ID) -> bool {
+    unsafe { element.GetCachedPropertyValue(id) }.ok().and_then(|v| bool::try_from(&v).ok()).unwrap_or(false)
 }
 
 fn center(r: RECT) -> Option<POINT> {
