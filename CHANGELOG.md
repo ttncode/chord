@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and versions follow [Semantic Versioning](https://semver.org/).
 
+## [0.7.6] - 2026-11-27
+
+### Fixed
+
+- Google result titles show their label on the title. A result's link starts at the favicon, so its label sat there, 40 px above the title, and looked like the favicon's. Now a link whose tallest text sits below its top edge gets its label, and its click, on that text.
+
 ## [0.7.5] - 2026-11-27
 
 ### Fixed
